@@ -2,7 +2,7 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.1.0 — Project Foundation**
+Current status: **V0.1.1 — Buddy Window**
 
 Technology stack: C#, .NET 10, WPF
 
