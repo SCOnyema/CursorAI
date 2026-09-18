@@ -2,10 +2,18 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.1.3 — Click-Through Buddy**
+Current status: **V0.2.0 — Application State Model**
 
 Technology stack: C#, .NET 10, WPF
 
-The buddy follows the Windows cursor and allows mouse input to pass through to applications underneath it. The V0.1 Cursor Companion is functionally implemented, subject to manual verification of click-through behavior.
+V0.1 Cursor Companion is complete. The buddy follows the Windows cursor while allowing mouse input to pass through to applications underneath it.
 
-AI, screen capture, voice, visual guidance overlays, and UI Automation are planned capabilities and are not implemented yet. V0.2 and later milestones have not been implemented.
+V0.2.0 introduces state infrastructure only:
+
+- `Idle` — available and not actively processing a request.
+- `Listening` — receiving user input; microphone functionality is not implemented.
+- `Thinking` — processing a request; AI functionality is not implemented.
+- `Responding` — presenting a response; text-to-speech is not implemented.
+- `Guiding` — visually guiding the user; guidance overlays are not implemented.
+
+Global controls and later AI, voice, overlay, and UI Automation capabilities are not implemented yet.
