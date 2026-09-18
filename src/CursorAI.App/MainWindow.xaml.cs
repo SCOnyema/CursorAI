@@ -29,6 +29,9 @@ public partial class MainWindow : Window
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
     {
+        nint windowHandle = new WindowInteropHelper(this).Handle;
+        NativeMethods.EnableClickThrough(windowHandle);
+
         UpdateBuddyPosition();
         _cursorTrackingTimer.Start();
     }
