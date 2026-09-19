@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 
@@ -10,6 +11,8 @@ internal sealed class HotkeyService : IDisposable
 
     private readonly HwndSource _source;
     private readonly nint _windowHandle;
+    private bool _isDisposed;
+    private bool _isHookInstalled;
     private bool _isRegistered;
 
     internal HotkeyService(HwndSource source)
@@ -19,28 +22,63 @@ internal sealed class HotkeyService : IDisposable
 
         NativeMethods.RegisterActivationHotkey(_windowHandle, ActivationHotkeyId);
         _isRegistered = true;
-        _source.AddHook(WindowProcedure);
+
+        try
+        {
+            _source.AddHook(WindowProcedure);
+            _isHookInstalled = true;
+        }
+        catch
+        {
+            RollBackRegistration();
+            throw;
+        }
     }
 
     internal event EventHandler? ActivationHotkeyPressed;
 
     public void Dispose()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+
+        bool unregistered = !_isRegistered
+            || NativeMethods.UnregisterHotKey(_windowHandle, ActivationHotkeyId);
+        int unregisterError = unregistered ? 0 : Marshal.GetLastPInvokeError();
+        _isRegistered = false;
+
+        if (_isHookInstalled)
+        {
+            _source.RemoveHook(WindowProcedure);
+            _isHookInstalled = false;
+        }
+
+        ActivationHotkeyPressed = null;
+
+        if (!unregistered)
+        {
+            throw new Win32Exception(unregisterError, "Could not unregister the CursorAI activation hotkey.");
+        }
+    }
+
+    private void RollBackRegistration()
+    {
         if (!_isRegistered)
         {
             return;
         }
 
-        bool unregistered = NativeMethods.UnregisterHotKey(_windowHandle, ActivationHotkeyId);
-        int error = unregistered ? 0 : Marshal.GetLastPInvokeError();
-
-        _source.RemoveHook(WindowProcedure);
-        _isRegistered = false;
-
-        if (!unregistered)
+        if (!NativeMethods.UnregisterHotKey(_windowHandle, ActivationHotkeyId))
         {
-            throw new Win32Exception(error, "Could not unregister the CursorAI activation hotkey.");
+            Debug.WriteLine(
+                $"Could not roll back the CursorAI hotkey registration. Win32 error: {Marshal.GetLastPInvokeError()}.");
         }
+
+        _isRegistered = false;
     }
 
     private nint WindowProcedure(

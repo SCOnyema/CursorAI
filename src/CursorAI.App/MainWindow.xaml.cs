@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -19,13 +21,14 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _cursorTrackingTimer;
     private HotkeyService? _hotkeyService;
     private Storyboard? _activeStateStoryboard;
+    private bool _cleanupComplete;
+    private volatile bool _isShuttingDown;
 
     public MainWindow()
     {
         InitializeComponent();
 
         _buddyStateManager = ((App)Application.Current).BuddyStateManager;
-        _buddyStateManager.StateChanged += BuddyStateManager_StateChanged;
 
         _cursorTrackingTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
@@ -33,28 +36,48 @@ public partial class MainWindow : Window
         };
         _cursorTrackingTimer.Tick += CursorTrackingTimer_Tick;
 
+        _buddyStateManager.StateChanged += BuddyStateManager_StateChanged;
         SourceInitialized += MainWindow_SourceInitialized;
         Closed += MainWindow_Closed;
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
     {
-        nint windowHandle = new WindowInteropHelper(this).Handle;
-        NativeMethods.EnableClickThrough(windowHandle);
+        SourceInitialized -= MainWindow_SourceInitialized;
 
-        HwndSource source = HwndSource.FromHwnd(windowHandle)
-            ?? throw new InvalidOperationException("Could not access the buddy window's native message source.");
-        _hotkeyService = new HotkeyService(source);
-        _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
+        try
+        {
+            nint windowHandle = new WindowInteropHelper(this).Handle;
+            NativeMethods.EnableClickThrough(windowHandle);
 
-        ApplyBuddyState(_buddyStateManager.CurrentState);
-        UpdateBuddyPosition();
-        _cursorTrackingTimer.Start();
+            HwndSource source = HwndSource.FromHwnd(windowHandle)
+                ?? throw new InvalidOperationException("Could not access the buddy window's native message source.");
+
+            if (_hotkeyService is not null)
+            {
+                throw new InvalidOperationException("The CursorAI activation hotkey is already initialized.");
+            }
+
+            _hotkeyService = new HotkeyService(source);
+            _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
+
+            ApplyBuddyState(_buddyStateManager.CurrentState);
+            UpdateBuddyPosition();
+            _cursorTrackingTimer.Start();
+        }
+        catch
+        {
+            Cleanup();
+            throw;
+        }
     }
 
     private void HotkeyService_ActivationHotkeyPressed(object? sender, EventArgs e)
     {
-        Console.WriteLine("CursorAI hotkey received: Ctrl + Alt + Space");
+        if (_isShuttingDown)
+        {
+            return;
+        }
 
         BuddyState nextState = _buddyStateManager.CurrentState == BuddyState.Idle
             ? BuddyState.Listening
@@ -64,11 +87,21 @@ public partial class MainWindow : Window
 
     private void BuddyStateManager_StateChanged(object? sender, BuddyStateChangedEventArgs e)
     {
-        Console.WriteLine($"State: {e.PreviousState} -> {e.CurrentState}");
+        if (_isShuttingDown || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
 
         if (!Dispatcher.CheckAccess())
         {
-            _ = Dispatcher.InvokeAsync(() => ApplyBuddyState(e.CurrentState));
+            BuddyState state = e.CurrentState;
+            _ = Dispatcher.InvokeAsync(() =>
+            {
+                if (!_isShuttingDown)
+                {
+                    ApplyBuddyState(state);
+                }
+            });
             return;
         }
 
@@ -120,7 +153,10 @@ public partial class MainWindow : Window
 
     private void CursorTrackingTimer_Tick(object? sender, EventArgs e)
     {
-        UpdateBuddyPosition();
+        if (!_isShuttingDown)
+        {
+            UpdateBuddyPosition();
+        }
     }
 
     private void UpdateBuddyPosition()
@@ -155,15 +191,44 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        Cleanup();
+    }
+
+    private void Cleanup()
+    {
+        if (_cleanupComplete)
+        {
+            return;
+        }
+
+        _cleanupComplete = true;
+        _isShuttingDown = true;
+
+        Closed -= MainWindow_Closed;
+        SourceInitialized -= MainWindow_SourceInitialized;
         _cursorTrackingTimer.Stop();
         _cursorTrackingTimer.Tick -= CursorTrackingTimer_Tick;
         _buddyStateManager.StateChanged -= BuddyStateManager_StateChanged;
-        _activeStateStoryboard?.Remove(this);
+        ResetStateVisuals();
 
-        if (_hotkeyService is not null)
+        if (_hotkeyService is null)
         {
-            _hotkeyService.ActivationHotkeyPressed -= HotkeyService_ActivationHotkeyPressed;
+            return;
+        }
+
+        _hotkeyService.ActivationHotkeyPressed -= HotkeyService_ActivationHotkeyPressed;
+
+        try
+        {
             _hotkeyService.Dispose();
+        }
+        catch (Win32Exception exception)
+        {
+            Debug.WriteLine($"CursorAI hotkey cleanup failed: {exception}");
+        }
+        finally
+        {
+            _hotkeyService = null;
         }
     }
 }
