@@ -3,7 +3,7 @@
 This roadmap distinguishes implemented milestones from planned functionality.
 
 - V0.1 — Cursor companion: complete
-- V0.2 — Global controls and application state: in progress; application state infrastructure only
+- V0.2 — Global controls and application state: in progress; state model, global activation hotkey, and visual state feedback implemented
 - V0.3 — Screen capture and vision: planned
 - V0.4 — Voice input/output: planned
 - V0.5 — Visual guidance overlays: planned

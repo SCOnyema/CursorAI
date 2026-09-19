@@ -2,18 +2,12 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.2.0 — Application State Model**
+Current status: **V0.2.2 — Visual State Feedback**
 
 Technology stack: C#, .NET 10, WPF
 
 V0.1 Cursor Companion is complete. The buddy follows the Windows cursor while allowing mouse input to pass through to applications underneath it.
 
-V0.2.0 introduces state infrastructure only:
+Press **Ctrl + Alt + Space** from any ordinary desktop application to toggle between `Idle` and `Listening`. The buddy now visually represents all five application states. Actual microphone listening is not implemented yet; `Thinking`, `Responding`, and `Guiding` visuals provide infrastructure for later milestones.
 
-- `Idle` — available and not actively processing a request.
-- `Listening` — receiving user input; microphone functionality is not implemented.
-- `Thinking` — processing a request; AI functionality is not implemented.
-- `Responding` — presenting a response; text-to-speech is not implemented.
-- `Guiding` — visually guiding the user; guidance overlays are not implemented.
-
-Global controls and later AI, voice, overlay, and UI Automation capabilities are not implemented yet.
+AI, screen capture, voice, visual guidance overlays, and UI Automation are planned capabilities and are not implemented yet.

@@ -11,7 +11,63 @@
         Topmost="True"
         ShowInTaskbar="False"
         WindowStartupLocation="Manual">
+    <Window.Resources>
+        <Storyboard x:Key="ListeningStoryboard">
+            <DoubleAnimation Storyboard.TargetName="ListeningIndicator"
+                             Storyboard.TargetProperty="Opacity"
+                             From="0.35"
+                             To="1"
+                             Duration="0:0:0.65"
+                             AutoReverse="True"
+                             RepeatBehavior="Forever" />
+        </Storyboard>
+        <Storyboard x:Key="ThinkingStoryboard">
+            <DoubleAnimation Storyboard.TargetName="ThinkingRotation"
+                             Storyboard.TargetProperty="Angle"
+                             From="0"
+                             To="360"
+                             Duration="0:0:1.4"
+                             RepeatBehavior="Forever" />
+        </Storyboard>
+        <Storyboard x:Key="RespondingStoryboard">
+            <DoubleAnimation Storyboard.TargetName="RespondingScale"
+                             Storyboard.TargetProperty="ScaleY"
+                             From="0.45"
+                             To="1"
+                             Duration="0:0:0.3"
+                             AutoReverse="True"
+                             RepeatBehavior="Forever" />
+        </Storyboard>
+        <Storyboard x:Key="GuidingStoryboard">
+            <DoubleAnimation Storyboard.TargetName="GuidingTranslation"
+                             Storyboard.TargetProperty="X"
+                             From="0"
+                             To="3"
+                             Duration="0:0:0.45"
+                             AutoReverse="True"
+                             RepeatBehavior="Forever" />
+        </Storyboard>
+    </Window.Resources>
+
     <Grid Background="Transparent">
+        <Ellipse x:Name="ListeningIndicator"
+                 Margin="1"
+                 Stroke="#35E7FF"
+                 StrokeThickness="3"
+                 Visibility="Collapsed" />
+
+        <Ellipse x:Name="ThinkingIndicator"
+                 Margin="1"
+                 Stroke="#FFD54F"
+                 StrokeThickness="3"
+                 StrokeDashArray="2,2"
+                 Visibility="Collapsed"
+                 RenderTransformOrigin="0.5,0.5">
+            <Ellipse.RenderTransform>
+                <RotateTransform x:Name="ThinkingRotation" />
+            </Ellipse.RenderTransform>
+        </Ellipse>
+
         <Ellipse Margin="4"
                  Fill="#6C63FF"
                  Stroke="White"
@@ -29,5 +85,35 @@
                 <Ellipse Width="6" Height="8" Fill="#252238" />
             </Grid>
         </StackPanel>
+
+        <StackPanel x:Name="RespondingIndicator"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,10"
+                    Orientation="Horizontal"
+                    Visibility="Collapsed"
+                    RenderTransformOrigin="0.5,1">
+            <StackPanel.RenderTransform>
+                <ScaleTransform x:Name="RespondingScale" ScaleY="1" />
+            </StackPanel.RenderTransform>
+            <Rectangle Width="3" Height="7" Margin="1,0" RadiusX="1.5" RadiusY="1.5" Fill="#57F287" />
+            <Rectangle Width="3" Height="11" Margin="1,0" RadiusX="1.5" RadiusY="1.5" Fill="#57F287" />
+            <Rectangle Width="3" Height="7" Margin="1,0" RadiusX="1.5" RadiusY="1.5" Fill="#57F287" />
+        </StackPanel>
+
+        <Path x:Name="GuidingIndicator"
+              Width="14"
+              Height="14"
+              Margin="0,7,7,0"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Data="M 0,0 L 14,7 L 0,14 L 4,7 Z"
+              Fill="#FF9F43"
+              Stretch="Fill"
+              Visibility="Collapsed">
+            <Path.RenderTransform>
+                <TranslateTransform x:Name="GuidingTranslation" />
+            </Path.RenderTransform>
+        </Path>
     </Grid>
 </Window>

@@ -5,14 +5,28 @@ namespace CursorAI.App;
 
 internal static class NativeMethods
 {
+    internal const int HotkeyMessage = 0x0312;
+
     private const int ExtendedWindowStyleIndex = -20;
     private const long TransparentExtendedStyle = 0x00000020L;
     private const long NoActivateExtendedStyle = 0x08000000L;
+    private const uint AltHotkeyModifier = 0x0001;
+    private const uint ControlHotkeyModifier = 0x0002;
+    private const uint NoRepeatHotkeyModifier = 0x4000;
+    private const uint SpaceVirtualKey = 0x20;
     private const uint MonitorDefaultToNearest = 2;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(nint windowHandle, int id, uint modifiers, uint virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnregisterHotKey(nint windowHandle, int id);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", ExactSpelling = true, SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
@@ -26,6 +40,17 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    internal static void RegisterActivationHotkey(nint windowHandle, int id)
+    {
+        uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | NoRepeatHotkeyModifier;
+        if (!RegisterHotKey(windowHandle, id, modifiers, SpaceVirtualKey))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastPInvokeError(),
+                "Could not register Ctrl + Alt + Space. Another application may already own this shortcut.");
+        }
+    }
 
     internal static void EnableClickThrough(nint windowHandle)
     {
