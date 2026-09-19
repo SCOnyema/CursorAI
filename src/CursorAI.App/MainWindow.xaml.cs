@@ -98,14 +98,26 @@ public partial class MainWindow : Window
         try
         {
             CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
-            string savedPath = DevelopmentCaptureStorage.SavePng(frame, Environment.CurrentDirectory);
-            PhysicalScreenBounds bounds = frame.MonitorBounds;
+            DevelopmentCaptureArtifacts artifacts = DevelopmentCaptureStorage.Save(frame, Environment.CurrentDirectory);
+            CapturedMonitorInfo monitor = frame.Monitor;
 
             Console.WriteLine("Screen captured");
             Console.WriteLine(
-                $"Monitor bounds: X={bounds.X} Y={bounds.Y} Width={bounds.Width} Height={bounds.Height}");
+                $"Monitor bounds: X={monitor.Bounds.X} Y={monitor.Bounds.Y} "
+                + $"Width={monitor.Bounds.Width} Height={monitor.Bounds.Height}");
+            Console.WriteLine(
+                $"Work area: X={monitor.WorkArea.X} Y={monitor.WorkArea.Y} "
+                + $"Width={monitor.WorkArea.Width} Height={monitor.WorkArea.Height}");
+            Console.WriteLine($"Primary monitor: {monitor.IsPrimary}");
+            Console.WriteLine(
+                $"Cursor: screen=({frame.CursorScreenPosition.X},{frame.CursorScreenPosition.Y}) "
+                + $"capture=({frame.CursorPositionInImage.X},{frame.CursorPositionInImage.Y})");
+            Console.WriteLine(
+                $"Foreground: title={frame.ForegroundWindow.Title ?? "<unavailable>"} "
+                + $"process={frame.ForegroundWindow.ProcessName ?? "<unavailable>"}");
             Console.WriteLine($"Image: {frame.PixelWidth}x{frame.PixelHeight}");
-            Console.WriteLine($"Saved: {savedPath}");
+            Console.WriteLine($"Saved PNG: {artifacts.PngPath}");
+            Console.WriteLine($"Saved JSON: {artifacts.JsonPath}");
         }
         catch (Exception exception)
         {

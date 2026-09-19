@@ -7,13 +7,19 @@ public sealed class CapturedFrame
     internal CapturedFrame(
         BitmapSource image,
         DateTimeOffset capturedAt,
-        PhysicalScreenBounds monitorBounds)
+        CapturedMonitorInfo monitor,
+        PhysicalScreenPoint cursorScreenPosition,
+        PhysicalScreenPoint cursorPositionInImage,
+        ForegroundWindowInfo foregroundWindow)
     {
         Image = image;
         PixelWidth = image.PixelWidth;
         PixelHeight = image.PixelHeight;
         CapturedAt = capturedAt;
-        MonitorBounds = monitorBounds;
+        Monitor = monitor;
+        CursorScreenPosition = cursorScreenPosition;
+        CursorPositionInImage = cursorPositionInImage;
+        ForegroundWindow = foregroundWindow;
     }
 
     public BitmapSource Image { get; }
@@ -24,5 +30,11 @@ public sealed class CapturedFrame
 
     public DateTimeOffset CapturedAt { get; }
 
-    public PhysicalScreenBounds MonitorBounds { get; }
+    public CapturedMonitorInfo Monitor { get; }
+
+    public PhysicalScreenPoint CursorScreenPosition { get; }
+
+    public PhysicalScreenPoint CursorPositionInImage { get; }
+
+    public ForegroundWindowInfo ForegroundWindow { get; }
 }

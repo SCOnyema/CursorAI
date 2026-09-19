@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace CursorAI.App;
 
@@ -17,6 +18,7 @@ internal static class NativeMethods
     private const uint SpaceVirtualKey = 0x20;
     private const uint SKeyVirtualKey = 0x53;
     private const uint MonitorDefaultToNearest = 2;
+    private const uint MonitorInfoPrimaryFlag = 1;
     private const uint SourceCopyRasterOperation = 0x00CC0020;
     private const uint CaptureLayeredWindowsRasterOperation = 0x40000000;
 
@@ -44,6 +46,18 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowTextLength(nint windowHandle);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowText(nint windowHandle, StringBuilder text, int maximumCount);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
 
     [DllImport("user32.dll", EntryPoint = "GetDC", SetLastError = true)]
     private static extern nint GetDeviceContext(nint windowHandle);
@@ -93,6 +107,28 @@ internal static class NativeMethods
         RegisterApplicationHotkey(windowHandle, id, modifiers, SKeyVirtualKey, "Ctrl + Alt + Shift + S");
     }
 
+    internal static nint GetForegroundWindowHandle() => GetForegroundWindow();
+
+    internal static uint GetWindowProcessId(nint windowHandle)
+    {
+        _ = GetWindowThreadProcessId(windowHandle, out uint processId);
+        return processId;
+    }
+
+    internal static string? TryGetWindowTitle(nint windowHandle)
+    {
+        int length = GetWindowTextLength(windowHandle);
+        if (length <= 0)
+        {
+            return null;
+        }
+
+        StringBuilder text = new(length + 1);
+        return GetWindowText(windowHandle, text, text.Capacity) > 0
+            ? text.ToString()
+            : null;
+    }
+
     internal static nint GetDesktopDeviceContext() => GetDeviceContext(0);
 
     internal static int ReleaseDesktopDeviceContext(nint deviceContext) => ReleaseDeviceContext(0, deviceContext);
@@ -140,15 +176,26 @@ internal static class NativeMethods
 
     internal static bool TryGetCursorWorkArea(NativePoint cursorPosition, out NativeRect workArea)
     {
-        bool succeeded = TryGetMonitorInfo(cursorPosition, out MonitorInfo monitorInfo);
-        workArea = monitorInfo.WorkArea;
+        bool succeeded = TryGetCursorMonitorContext(cursorPosition, out NativeMonitorContext monitor);
+        workArea = monitor.WorkArea;
         return succeeded;
     }
 
-    internal static bool TryGetCursorMonitorBounds(NativePoint cursorPosition, out NativeRect monitorBounds)
+    internal static bool TryGetCursorMonitorContext(
+        NativePoint cursorPosition,
+        out NativeMonitorContext monitorContext)
     {
-        bool succeeded = TryGetMonitorInfo(cursorPosition, out MonitorInfo monitorInfo);
-        monitorBounds = monitorInfo.MonitorArea;
+        nint monitor = MonitorFromPoint(cursorPosition, MonitorDefaultToNearest);
+        MonitorInfo monitorInfo = new()
+        {
+            Size = Marshal.SizeOf<MonitorInfo>()
+        };
+
+        bool succeeded = monitor != 0 && GetMonitorInfo(monitor, ref monitorInfo);
+        monitorContext = new NativeMonitorContext(
+            monitorInfo.MonitorArea,
+            monitorInfo.WorkArea,
+            (monitorInfo.Flags & MonitorInfoPrimaryFlag) != 0);
         return succeeded;
     }
 
@@ -167,16 +214,10 @@ internal static class NativeMethods
         }
     }
 
-    private static bool TryGetMonitorInfo(NativePoint cursorPosition, out MonitorInfo monitorInfo)
-    {
-        nint monitor = MonitorFromPoint(cursorPosition, MonitorDefaultToNearest);
-        monitorInfo = new MonitorInfo
-        {
-            Size = Marshal.SizeOf<MonitorInfo>()
-        };
-
-        return monitor != 0 && GetMonitorInfo(monitor, ref monitorInfo);
-    }
+    internal readonly record struct NativeMonitorContext(
+        NativeRect Bounds,
+        NativeRect WorkArea,
+        bool IsPrimary);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct NativePoint

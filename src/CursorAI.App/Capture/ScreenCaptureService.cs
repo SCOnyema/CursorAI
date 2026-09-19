@@ -11,26 +11,88 @@ internal sealed class ScreenCaptureService
 {
     internal CapturedFrame CaptureMonitorContainingCursor()
     {
-        if (!NativeMethods.GetCursorPos(out NativeMethods.NativePoint cursorPosition))
+        if (!NativeMethods.GetCursorPos(out NativeMethods.NativePoint nativeCursor))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "Could not determine the cursor position for capture.");
         }
 
-        if (!NativeMethods.TryGetCursorMonitorBounds(cursorPosition, out NativeMethods.NativeRect nativeBounds))
+        if (!NativeMethods.TryGetCursorMonitorContext(nativeCursor, out NativeMethods.NativeMonitorContext nativeMonitor))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "Could not determine the monitor containing the cursor.");
         }
 
-        int width = nativeBounds.Right - nativeBounds.Left;
-        int height = nativeBounds.Bottom - nativeBounds.Top;
-        if (width <= 0 || height <= 0)
+        PhysicalScreenBounds monitorBounds = ToBounds(nativeMonitor.Bounds);
+        if (monitorBounds.Width <= 0 || monitorBounds.Height <= 0)
         {
-            throw new InvalidOperationException($"The capture monitor has invalid dimensions: {width}x{height}.");
+            throw new InvalidOperationException(
+                $"The capture monitor has invalid dimensions: {monitorBounds.Width}x{monitorBounds.Height}.");
         }
 
-        BitmapSource image = CapturePhysicalRegion(nativeBounds.Left, nativeBounds.Top, width, height);
-        PhysicalScreenBounds bounds = new(nativeBounds.Left, nativeBounds.Top, width, height);
-        return new CapturedFrame(image, DateTimeOffset.Now, bounds);
+        PhysicalScreenPoint cursorScreenPosition = new(nativeCursor.X, nativeCursor.Y);
+        PhysicalScreenPoint cursorPositionInImage = CursorGrounding.ToCaptureCoordinates(
+            cursorScreenPosition,
+            monitorBounds);
+        CapturedMonitorInfo monitor = new(
+            monitorBounds,
+            ToBounds(nativeMonitor.WorkArea),
+            nativeMonitor.IsPrimary);
+        ForegroundWindowInfo foregroundWindow = CaptureForegroundWindowInfo();
+
+        DateTimeOffset capturedAt = DateTimeOffset.Now;
+        BitmapSource image = CapturePhysicalRegion(
+            monitorBounds.X,
+            monitorBounds.Y,
+            monitorBounds.Width,
+            monitorBounds.Height);
+
+        return new CapturedFrame(
+            image,
+            capturedAt,
+            monitor,
+            cursorScreenPosition,
+            cursorPositionInImage,
+            foregroundWindow);
+    }
+
+    private static ForegroundWindowInfo CaptureForegroundWindowInfo()
+    {
+        nint windowHandle = NativeMethods.GetForegroundWindowHandle();
+        if (windowHandle == 0)
+        {
+            return new ForegroundWindowInfo(0, null, null);
+        }
+
+        string? title = NativeMethods.TryGetWindowTitle(windowHandle);
+        string? processName = null;
+
+        uint processId = NativeMethods.GetWindowProcessId(windowHandle);
+        if (processId != 0)
+        {
+            try
+            {
+                using Process process = Process.GetProcessById(checked((int)processId));
+                processName = process.ProcessName;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException
+                or InvalidOperationException
+                or Win32Exception
+                or OverflowException)
+            {
+                Debug.WriteLine($"Could not resolve foreground process {processId}: {exception.Message}");
+            }
+        }
+
+        return new ForegroundWindowInfo(windowHandle, title, processName);
+    }
+
+    private static PhysicalScreenBounds ToBounds(NativeMethods.NativeRect rectangle)
+    {
+        return new PhysicalScreenBounds(
+            rectangle.Left,
+            rectangle.Top,
+            rectangle.Right - rectangle.Left,
+            rectangle.Bottom - rectangle.Top);
     }
 
     private static BitmapSource CapturePhysicalRegion(int x, int y, int width, int height)
