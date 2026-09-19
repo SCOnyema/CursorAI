@@ -8,34 +8,41 @@ namespace CursorAI.App.Input;
 internal sealed class HotkeyService : IDisposable
 {
     private const int ActivationHotkeyId = 0x4355;
+    private const int CaptureHotkeyId = 0x4356;
 
     private readonly HwndSource _source;
     private readonly nint _windowHandle;
+    private bool _isActivationRegistered;
+    private bool _isCaptureRegistered;
     private bool _isDisposed;
     private bool _isHookInstalled;
-    private bool _isRegistered;
 
     internal HotkeyService(HwndSource source)
     {
         _source = source;
         _windowHandle = source.Handle;
 
-        NativeMethods.RegisterActivationHotkey(_windowHandle, ActivationHotkeyId);
-        _isRegistered = true;
-
         try
         {
+            NativeMethods.RegisterActivationHotkey(_windowHandle, ActivationHotkeyId);
+            _isActivationRegistered = true;
+
+            NativeMethods.RegisterCaptureHotkey(_windowHandle, CaptureHotkeyId);
+            _isCaptureRegistered = true;
+
             _source.AddHook(WindowProcedure);
             _isHookInstalled = true;
         }
         catch
         {
-            RollBackRegistration();
+            RollBackRegistrations();
             throw;
         }
     }
 
     internal event EventHandler? ActivationHotkeyPressed;
+
+    internal event EventHandler? CaptureHotkeyPressed;
 
     public void Dispose()
     {
@@ -46,10 +53,10 @@ internal sealed class HotkeyService : IDisposable
 
         _isDisposed = true;
 
-        bool unregistered = !_isRegistered
-            || NativeMethods.UnregisterHotKey(_windowHandle, ActivationHotkeyId);
-        int unregisterError = unregistered ? 0 : Marshal.GetLastPInvokeError();
-        _isRegistered = false;
+        List<string> failures = [];
+        int firstError = 0;
+        TryUnregister(CaptureHotkeyId, "Ctrl + Alt + Shift + S", ref _isCaptureRegistered, failures, ref firstError);
+        TryUnregister(ActivationHotkeyId, "Ctrl + Alt + Space", ref _isActivationRegistered, failures, ref firstError);
 
         if (_isHookInstalled)
         {
@@ -58,27 +65,56 @@ internal sealed class HotkeyService : IDisposable
         }
 
         ActivationHotkeyPressed = null;
+        CaptureHotkeyPressed = null;
 
-        if (!unregistered)
+        if (failures.Count > 0)
         {
-            throw new Win32Exception(unregisterError, "Could not unregister the CursorAI activation hotkey.");
+            throw new Win32Exception(firstError, $"Could not unregister: {string.Join(", ", failures)}.");
         }
     }
 
-    private void RollBackRegistration()
+    private void RollBackRegistrations()
     {
-        if (!_isRegistered)
+        RollBackRegistration(CaptureHotkeyId, "Ctrl + Alt + Shift + S", ref _isCaptureRegistered);
+        RollBackRegistration(ActivationHotkeyId, "Ctrl + Alt + Space", ref _isActivationRegistered);
+    }
+
+    private void RollBackRegistration(int id, string name, ref bool isRegistered)
+    {
+        if (!isRegistered)
         {
             return;
         }
 
-        if (!NativeMethods.UnregisterHotKey(_windowHandle, ActivationHotkeyId))
+        if (!NativeMethods.UnregisterHotKey(_windowHandle, id))
         {
             Debug.WriteLine(
-                $"Could not roll back the CursorAI hotkey registration. Win32 error: {Marshal.GetLastPInvokeError()}.");
+                $"Could not roll back {name} registration. Win32 error: {Marshal.GetLastPInvokeError()}.");
         }
 
-        _isRegistered = false;
+        isRegistered = false;
+    }
+
+    private void TryUnregister(
+        int id,
+        string name,
+        ref bool isRegistered,
+        List<string> failures,
+        ref int firstError)
+    {
+        if (!isRegistered)
+        {
+            return;
+        }
+
+        if (!NativeMethods.UnregisterHotKey(_windowHandle, id))
+        {
+            int error = Marshal.GetLastPInvokeError();
+            firstError = firstError == 0 ? error : firstError;
+            failures.Add(name);
+        }
+
+        isRegistered = false;
     }
 
     private nint WindowProcedure(
@@ -88,9 +124,19 @@ internal sealed class HotkeyService : IDisposable
         nint longParameter,
         ref bool handled)
     {
-        if (message == NativeMethods.HotkeyMessage && wordParameter == ActivationHotkeyId)
+        if (message != NativeMethods.HotkeyMessage)
+        {
+            return 0;
+        }
+
+        if (wordParameter == ActivationHotkeyId)
         {
             ActivationHotkeyPressed?.Invoke(this, EventArgs.Empty);
+            handled = true;
+        }
+        else if (wordParameter == CaptureHotkeyId)
+        {
+            CaptureHotkeyPressed?.Invoke(this, EventArgs.Empty);
             handled = true;
         }
 

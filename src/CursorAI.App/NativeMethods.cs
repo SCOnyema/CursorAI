@@ -12,11 +12,15 @@ internal static class NativeMethods
     private const long NoActivateExtendedStyle = 0x08000000L;
     private const uint AltHotkeyModifier = 0x0001;
     private const uint ControlHotkeyModifier = 0x0002;
+    private const uint ShiftHotkeyModifier = 0x0004;
     private const uint NoRepeatHotkeyModifier = 0x4000;
     private const uint SpaceVirtualKey = 0x20;
+    private const uint SKeyVirtualKey = 0x53;
     private const uint MonitorDefaultToNearest = 2;
+    private const uint SourceCopyRasterOperation = 0x00CC0020;
+    private const uint CaptureLayeredWindowsRasterOperation = 0x40000000;
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetCursorPos(out NativePoint point);
 
@@ -37,19 +41,80 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     private static extern nint MonitorFromPoint(NativePoint point, uint flags);
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    [DllImport("user32.dll", EntryPoint = "GetDC", SetLastError = true)]
+    private static extern nint GetDeviceContext(nint windowHandle);
+
+    [DllImport("user32.dll", EntryPoint = "ReleaseDC", SetLastError = true)]
+    private static extern int ReleaseDeviceContext(nint windowHandle, nint deviceContext);
+
+    [DllImport("gdi32.dll", EntryPoint = "CreateCompatibleDC", SetLastError = true)]
+    internal static extern nint CreateCompatibleDeviceContext(nint deviceContext);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    internal static extern nint CreateCompatibleBitmap(nint deviceContext, int width, int height);
+
+    [DllImport("gdi32.dll", EntryPoint = "SelectObject", SetLastError = true)]
+    internal static extern nint SelectGraphicsObject(nint deviceContext, nint graphicsObject);
+
+    [DllImport("gdi32.dll", EntryPoint = "DeleteObject", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteGraphicsObject(nint graphicsObject);
+
+    [DllImport("gdi32.dll", EntryPoint = "DeleteDC", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DeleteDeviceContext(nint deviceContext);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BitBlt(
+        nint destinationDeviceContext,
+        int destinationX,
+        int destinationY,
+        int width,
+        int height,
+        nint sourceDeviceContext,
+        int sourceX,
+        int sourceY,
+        uint rasterOperation);
 
     internal static void RegisterActivationHotkey(nint windowHandle, int id)
     {
         uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | NoRepeatHotkeyModifier;
-        if (!RegisterHotKey(windowHandle, id, modifiers, SpaceVirtualKey))
-        {
-            throw new Win32Exception(
-                Marshal.GetLastPInvokeError(),
-                "Could not register Ctrl + Alt + Space. Another application may already own this shortcut.");
-        }
+        RegisterApplicationHotkey(windowHandle, id, modifiers, SpaceVirtualKey, "Ctrl + Alt + Space");
+    }
+
+    internal static void RegisterCaptureHotkey(nint windowHandle, int id)
+    {
+        uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | ShiftHotkeyModifier | NoRepeatHotkeyModifier;
+        RegisterApplicationHotkey(windowHandle, id, modifiers, SKeyVirtualKey, "Ctrl + Alt + Shift + S");
+    }
+
+    internal static nint GetDesktopDeviceContext() => GetDeviceContext(0);
+
+    internal static int ReleaseDesktopDeviceContext(nint deviceContext) => ReleaseDeviceContext(0, deviceContext);
+
+    internal static bool CopyScreenPixels(
+        nint destinationDeviceContext,
+        nint sourceDeviceContext,
+        int sourceX,
+        int sourceY,
+        int width,
+        int height)
+    {
+        return BitBlt(
+            destinationDeviceContext,
+            0,
+            0,
+            width,
+            height,
+            sourceDeviceContext,
+            sourceX,
+            sourceY,
+            SourceCopyRasterOperation | CaptureLayeredWindowsRasterOperation);
     }
 
     internal static void EnableClickThrough(nint windowHandle)
@@ -75,15 +140,42 @@ internal static class NativeMethods
 
     internal static bool TryGetCursorWorkArea(NativePoint cursorPosition, out NativeRect workArea)
     {
+        bool succeeded = TryGetMonitorInfo(cursorPosition, out MonitorInfo monitorInfo);
+        workArea = monitorInfo.WorkArea;
+        return succeeded;
+    }
+
+    internal static bool TryGetCursorMonitorBounds(NativePoint cursorPosition, out NativeRect monitorBounds)
+    {
+        bool succeeded = TryGetMonitorInfo(cursorPosition, out MonitorInfo monitorInfo);
+        monitorBounds = monitorInfo.MonitorArea;
+        return succeeded;
+    }
+
+    private static void RegisterApplicationHotkey(
+        nint windowHandle,
+        int id,
+        uint modifiers,
+        uint virtualKey,
+        string displayName)
+    {
+        if (!RegisterHotKey(windowHandle, id, modifiers, virtualKey))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastPInvokeError(),
+                $"Could not register {displayName}. Another application may already own this shortcut.");
+        }
+    }
+
+    private static bool TryGetMonitorInfo(NativePoint cursorPosition, out MonitorInfo monitorInfo)
+    {
         nint monitor = MonitorFromPoint(cursorPosition, MonitorDefaultToNearest);
-        MonitorInfo monitorInfo = new()
+        monitorInfo = new MonitorInfo
         {
             Size = Marshal.SizeOf<MonitorInfo>()
         };
 
-        bool succeeded = monitor != 0 && GetMonitorInfo(monitor, ref monitorInfo);
-        workArea = monitorInfo.WorkArea;
-        return succeeded;
+        return monitor != 0 && GetMonitorInfo(monitor, ref monitorInfo);
     }
 
     [StructLayout(LayoutKind.Sequential)]

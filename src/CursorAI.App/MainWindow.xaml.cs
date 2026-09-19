@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using CursorAI.App.Capture;
 using CursorAI.App.Input;
 using CursorAI.App.Models;
 using CursorAI.App.State;
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
 
     private readonly BuddyStateManager _buddyStateManager;
     private readonly DispatcherTimer _cursorTrackingTimer;
+    private readonly ScreenCaptureService _screenCaptureService = new();
     private HotkeyService? _hotkeyService;
     private Storyboard? _activeStateStoryboard;
     private bool _cleanupComplete;
@@ -55,11 +57,12 @@ public partial class MainWindow : Window
 
             if (_hotkeyService is not null)
             {
-                throw new InvalidOperationException("The CursorAI activation hotkey is already initialized.");
+                throw new InvalidOperationException("The CursorAI hotkeys are already initialized.");
             }
 
             _hotkeyService = new HotkeyService(source);
             _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
+            _hotkeyService.CaptureHotkeyPressed += HotkeyService_CaptureHotkeyPressed;
 
             ApplyBuddyState(_buddyStateManager.CurrentState);
             UpdateBuddyPosition();
@@ -83,6 +86,32 @@ public partial class MainWindow : Window
             ? BuddyState.Listening
             : BuddyState.Idle;
         _buddyStateManager.SetState(nextState);
+    }
+
+    private void HotkeyService_CaptureHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        try
+        {
+            CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
+            string savedPath = DevelopmentCaptureStorage.SavePng(frame, Environment.CurrentDirectory);
+            PhysicalScreenBounds bounds = frame.MonitorBounds;
+
+            Console.WriteLine("Screen captured");
+            Console.WriteLine(
+                $"Monitor bounds: X={bounds.X} Y={bounds.Y} Width={bounds.Width} Height={bounds.Height}");
+            Console.WriteLine($"Image: {frame.PixelWidth}x{frame.PixelHeight}");
+            Console.WriteLine($"Saved: {savedPath}");
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Screen capture failed: {exception.Message}");
+            Debug.WriteLine($"Screen capture failed: {exception}");
+        }
     }
 
     private void BuddyStateManager_StateChanged(object? sender, BuddyStateChangedEventArgs e)
@@ -217,6 +246,7 @@ public partial class MainWindow : Window
         }
 
         _hotkeyService.ActivationHotkeyPressed -= HotkeyService_ActivationHotkeyPressed;
+        _hotkeyService.CaptureHotkeyPressed -= HotkeyService_CaptureHotkeyPressed;
 
         try
         {

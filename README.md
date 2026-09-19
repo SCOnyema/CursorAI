@@ -2,12 +2,14 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.2.3 — Lifecycle & Reliability**
+Current status: **V0.3.0 — Screen Capture Foundation**
 
 Technology stack: C#, .NET 10, WPF
 
-V0.1 Cursor Companion is complete. The buddy follows the Windows cursor while allowing mouse input to pass through to applications underneath it.
+V0.1 Cursor Companion and V0.2 Controls & State are complete. Press **Ctrl + Alt + Space** to toggle between `Idle` and `Listening`.
 
-V0.2 Controls & State is complete. Press **Ctrl + Alt + Space** from any ordinary desktop application to toggle between `Idle` and `Listening`. The buddy visually represents all five application states. Actual microphone listening is not implemented; `Thinking`, `Responding`, and `Guiding` visuals provide infrastructure for later milestones.
+For development verification, press **Ctrl + Alt + Shift + S** to capture the entire monitor containing the mouse cursor. The screenshot is held in memory and a PNG copy is saved locally under `artifacts/captures/`.
 
-AI, screen capture, voice, visual guidance overlays, and UI Automation are planned capabilities and are not implemented yet.
+Screenshots may contain sensitive information visible on the selected display. Capture occurs only when the user explicitly presses the development shortcut. Captures remain local: they are not uploaded, sent to an AI service, or processed by a vision model.
+
+AI, vision inference, continuous capture, voice, visual guidance overlays, and UI Automation are not implemented yet.
