@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="CursorAI.App" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!--
+    CursorAI's capture path treats GetCursorPos, GetMonitorInfo and BitBlt results as true
+    physical pixels. That only holds for a per-monitor-DPI-aware process.
+
+    Measured 2026-10-08 on Windows 11 26200, .NET 10 WPF, single 1920x1080 display at 120 DPI:
+      without this manifest : PROCESS_SYSTEM_DPI_AWARE  (awareness 1)
+      with this manifest    : PROCESS_PER_MONITOR_AWARE (awareness 2)
+
+    System-aware happens to be correct on a single display but virtualises coordinates on a
+    second monitor at a different scale factor, so this declaration is what makes the capture
+    path sound. Declared explicitly so the requirement comes from the project rather than from
+    a framework default that can change between .NET versions.
+
+    KNOWN DISCREPANCY: we request PerMonitorV2 but the process resolves to per-monitor V1
+    (awareness 2, not 3). Removing the legacy dpiAware element above does not change this, so
+    the downgrade comes from the WPF host, not from this file. V1 satisfies the only property
+    CursorAI depends on - unvirtualised physical coordinates - because V2 adds non-client-area
+    scaling, dialog auto-scaling and child-window DPI notifications, none of which apply to a
+    borderless 64x64 window that positions itself. Revisit if CursorAI ever grows real chrome.
+
+    STILL UNVERIFIED: multi-monitor and mixed-DPI behaviour. The development machine has one
+    display, so CursorGrounding's negative-origin math has never actually executed.
+  -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

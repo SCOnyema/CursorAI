@@ -9,11 +9,13 @@ internal sealed class HotkeyService : IDisposable
 {
     private const int ActivationHotkeyId = 0x4355;
     private const int CaptureHotkeyId = 0x4356;
+    private const int VisionHotkeyId = 0x4357;
 
     private readonly HwndSource _source;
     private readonly nint _windowHandle;
     private bool _isActivationRegistered;
     private bool _isCaptureRegistered;
+    private bool _isVisionRegistered;
     private bool _isDisposed;
     private bool _isHookInstalled;
 
@@ -24,11 +26,37 @@ internal sealed class HotkeyService : IDisposable
 
         try
         {
-            NativeMethods.RegisterActivationHotkey(_windowHandle, ActivationHotkeyId);
-            _isActivationRegistered = true;
+            List<string> unavailable = [];
 
-            NativeMethods.RegisterCaptureHotkey(_windowHandle, CaptureHotkeyId);
-            _isCaptureRegistered = true;
+            _isActivationRegistered = NativeMethods.RegisterActivationHotkey(
+                _windowHandle, ActivationHotkeyId);
+            if (!_isActivationRegistered)
+            {
+                unavailable.Add("Ctrl + Alt + Space (idle/listening toggle)");
+            }
+
+            _isCaptureRegistered = NativeMethods.RegisterCaptureHotkey(
+                _windowHandle, CaptureHotkeyId);
+            if (!_isCaptureRegistered)
+            {
+                unavailable.Add("Ctrl + Alt + Shift + S (local capture)");
+            }
+
+            _isVisionRegistered = NativeMethods.RegisterVisionHotkey(
+                _windowHandle, VisionHotkeyId);
+            if (!_isVisionRegistered)
+            {
+                unavailable.Add("Ctrl + Alt + Shift + V (vision analysis)");
+            }
+
+            UnavailableHotkeys = unavailable;
+
+            if (!_isActivationRegistered && !_isCaptureRegistered && !_isVisionRegistered)
+            {
+                throw new InvalidOperationException(
+                    "None of the CursorAI hotkeys could be registered. Another application owns "
+                    + "all three combinations, so CursorAI would have no way to be activated.");
+            }
 
             _source.AddHook(WindowProcedure);
             _isHookInstalled = true;
@@ -40,9 +68,18 @@ internal sealed class HotkeyService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Human-readable names of the hotkeys another application already owned. Empty when all
+    /// three registered. A partially registered service is a supported state: the remaining
+    /// shortcuts still work.
+    /// </summary>
+    internal IReadOnlyList<string> UnavailableHotkeys { get; private set; } = [];
+
     internal event EventHandler? ActivationHotkeyPressed;
 
     internal event EventHandler? CaptureHotkeyPressed;
+
+    internal event EventHandler? VisionHotkeyPressed;
 
     public void Dispose()
     {
@@ -55,6 +92,7 @@ internal sealed class HotkeyService : IDisposable
 
         List<string> failures = [];
         int firstError = 0;
+        TryUnregister(VisionHotkeyId, "Ctrl + Alt + Shift + V", ref _isVisionRegistered, failures, ref firstError);
         TryUnregister(CaptureHotkeyId, "Ctrl + Alt + Shift + S", ref _isCaptureRegistered, failures, ref firstError);
         TryUnregister(ActivationHotkeyId, "Ctrl + Alt + Space", ref _isActivationRegistered, failures, ref firstError);
 
@@ -66,6 +104,7 @@ internal sealed class HotkeyService : IDisposable
 
         ActivationHotkeyPressed = null;
         CaptureHotkeyPressed = null;
+        VisionHotkeyPressed = null;
 
         if (failures.Count > 0)
         {
@@ -75,6 +114,7 @@ internal sealed class HotkeyService : IDisposable
 
     private void RollBackRegistrations()
     {
+        RollBackRegistration(VisionHotkeyId, "Ctrl + Alt + Shift + V", ref _isVisionRegistered);
         RollBackRegistration(CaptureHotkeyId, "Ctrl + Alt + Shift + S", ref _isCaptureRegistered);
         RollBackRegistration(ActivationHotkeyId, "Ctrl + Alt + Space", ref _isActivationRegistered);
     }
@@ -137,6 +177,11 @@ internal sealed class HotkeyService : IDisposable
         else if (wordParameter == CaptureHotkeyId)
         {
             CaptureHotkeyPressed?.Invoke(this, EventArgs.Empty);
+            handled = true;
+        }
+        else if (wordParameter == VisionHotkeyId)
+        {
+            VisionHotkeyPressed?.Invoke(this, EventArgs.Empty);
             handled = true;
         }
 

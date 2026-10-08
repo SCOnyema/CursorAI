@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -8,6 +9,7 @@ internal static class NativeMethods
 {
     internal const int HotkeyMessage = 0x0312;
 
+    private const uint AttachParentProcess = 0xFFFFFFFF;
     private const int ExtendedWindowStyleIndex = -20;
     private const long TransparentExtendedStyle = 0x00000020L;
     private const long NoActivateExtendedStyle = 0x08000000L;
@@ -17,14 +19,20 @@ internal static class NativeMethods
     private const uint NoRepeatHotkeyModifier = 0x4000;
     private const uint SpaceVirtualKey = 0x20;
     private const uint SKeyVirtualKey = 0x53;
+    private const uint VKeyVirtualKey = 0x56;
     private const uint MonitorDefaultToNearest = 2;
     private const uint MonitorInfoPrimaryFlag = 1;
     private const uint SourceCopyRasterOperation = 0x00CC0020;
     private const uint CaptureLayeredWindowsRasterOperation = 0x40000000;
+    private const uint ExcludeFromCaptureAffinity = 0x00000011;
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AttachConsole(uint processId);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -39,6 +47,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", ExactSpelling = true, SetLastError = true)]
     private static extern nint SetWindowLongPtr(nint windowHandle, int index, nint newValue);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowDisplayAffinity(nint windowHandle, uint affinity);
 
     [DllImport("user32.dll")]
     private static extern nint MonitorFromPoint(NativePoint point, uint flags);
@@ -95,16 +107,24 @@ internal static class NativeMethods
         int sourceY,
         uint rasterOperation);
 
-    internal static void RegisterActivationHotkey(nint windowHandle, int id)
+    internal static bool RegisterActivationHotkey(nint windowHandle, int id)
     {
         uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | NoRepeatHotkeyModifier;
-        RegisterApplicationHotkey(windowHandle, id, modifiers, SpaceVirtualKey, "Ctrl + Alt + Space");
+        return RegisterApplicationHotkey(windowHandle, id, modifiers, SpaceVirtualKey, "Ctrl + Alt + Space");
     }
 
-    internal static void RegisterCaptureHotkey(nint windowHandle, int id)
+    internal static bool TryAttachToParentConsole() => AttachConsole(AttachParentProcess);
+
+    internal static bool RegisterCaptureHotkey(nint windowHandle, int id)
     {
         uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | ShiftHotkeyModifier | NoRepeatHotkeyModifier;
-        RegisterApplicationHotkey(windowHandle, id, modifiers, SKeyVirtualKey, "Ctrl + Alt + Shift + S");
+        return RegisterApplicationHotkey(windowHandle, id, modifiers, SKeyVirtualKey, "Ctrl + Alt + Shift + S");
+    }
+
+    internal static bool RegisterVisionHotkey(nint windowHandle, int id)
+    {
+        uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | ShiftHotkeyModifier | NoRepeatHotkeyModifier;
+        return RegisterApplicationHotkey(windowHandle, id, modifiers, VKeyVirtualKey, "Ctrl + Alt + Shift + V");
     }
 
     internal static nint GetForegroundWindowHandle() => GetForegroundWindow();
@@ -174,6 +194,28 @@ internal static class NativeMethods
         }
     }
 
+    /// <summary>
+    /// Removes the buddy window from screen captures. Without this the window - which is
+    /// WS_EX_LAYERED because of AllowsTransparency - is pulled in by CAPTUREBLT and lands in
+    /// CursorAI's own screenshots, 64x64 at cursor+(16,16), covering the very region the
+    /// cursor is pointing at. Verified 2026-10-08: all four captures carrying metadata held
+    /// ~1600 buddy pixels inside that box, so the vision model was being shown the buddy
+    /// instead of what it occluded.
+    /// Requires Windows 10 2004 (build 19041) or later; older builds keep the old behaviour.
+    /// </summary>
+    internal static bool TryExcludeFromCapture(nint windowHandle)
+    {
+        if (SetWindowDisplayAffinity(windowHandle, ExcludeFromCaptureAffinity))
+        {
+            return true;
+        }
+
+        Debug.WriteLine(
+            "Could not exclude the buddy window from screen capture. Win32 error: "
+            + $"{Marshal.GetLastPInvokeError()}.");
+        return false;
+    }
+
     internal static bool TryGetCursorWorkArea(NativePoint cursorPosition, out NativeRect workArea)
     {
         bool succeeded = TryGetCursorMonitorContext(cursorPosition, out NativeMonitorContext monitor);
@@ -199,19 +241,29 @@ internal static class NativeMethods
         return succeeded;
     }
 
-    private static void RegisterApplicationHotkey(
+    /// <summary>
+    /// Attempts to register one global hotkey, returning false when another application already
+    /// owns the combination rather than throwing. Losing a single shortcut must never stop
+    /// CursorAI from starting. Verified 2026-10-08: on the development machine
+    /// Ctrl + Alt + Space is owned by another process, and throwing here killed the app at
+    /// startup over the one hotkey with no functional behaviour behind it.
+    /// </summary>
+    private static bool RegisterApplicationHotkey(
         nint windowHandle,
         int id,
         uint modifiers,
         uint virtualKey,
         string displayName)
     {
-        if (!RegisterHotKey(windowHandle, id, modifiers, virtualKey))
+        if (RegisterHotKey(windowHandle, id, modifiers, virtualKey))
         {
-            throw new Win32Exception(
-                Marshal.GetLastPInvokeError(),
-                $"Could not register {displayName}. Another application may already own this shortcut.");
+            return true;
         }
+
+        Debug.WriteLine(
+            $"Could not register {displayName}. Win32 error: {Marshal.GetLastPInvokeError()}. "
+            + "Another application may already own this shortcut.");
+        return false;
     }
 
     internal readonly record struct NativeMonitorContext(

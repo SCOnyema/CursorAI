@@ -9,6 +9,7 @@ using CursorAI.App.Capture;
 using CursorAI.App.Input;
 using CursorAI.App.Models;
 using CursorAI.App.State;
+using CursorAI.App.Vision;
 
 namespace CursorAI.App;
 
@@ -16,14 +17,18 @@ public partial class MainWindow : Window
 {
     private const double CursorOffsetX = 16;
     private const double CursorOffsetY = 16;
+    private const string DevelopmentVisionQuestion = "What am I looking at, and what is under my cursor?";
     private static readonly TimeSpan TrackingInterval = TimeSpan.FromMilliseconds(16);
 
     private readonly BuddyStateManager _buddyStateManager;
     private readonly DispatcherTimer _cursorTrackingTimer;
     private readonly ScreenCaptureService _screenCaptureService = new();
+    private readonly VisionService _visionService;
     private HotkeyService? _hotkeyService;
+    private CancellationTokenSource? _visionCancellationSource;
     private Storyboard? _activeStateStoryboard;
     private bool _cleanupComplete;
+    private bool _isVisionAnalysisRunning;
     private volatile bool _isShuttingDown;
 
     public MainWindow()
@@ -31,6 +36,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _buddyStateManager = ((App)Application.Current).BuddyStateManager;
+        _visionService = ((App)Application.Current).VisionService;
 
         _cursorTrackingTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
@@ -52,6 +58,13 @@ public partial class MainWindow : Window
             nint windowHandle = new WindowInteropHelper(this).Handle;
             NativeMethods.EnableClickThrough(windowHandle);
 
+            if (!NativeMethods.TryExcludeFromCapture(windowHandle))
+            {
+                Console.Error.WriteLine(
+                    "Warning: the buddy window could not be excluded from screen capture, so it "
+                    + "may appear in captures and occlude what the cursor is pointing at.");
+            }
+
             HwndSource source = HwndSource.FromHwnd(windowHandle)
                 ?? throw new InvalidOperationException("Could not access the buddy window's native message source.");
 
@@ -63,6 +76,18 @@ public partial class MainWindow : Window
             _hotkeyService = new HotkeyService(source);
             _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
             _hotkeyService.CaptureHotkeyPressed += HotkeyService_CaptureHotkeyPressed;
+            _hotkeyService.VisionHotkeyPressed += HotkeyService_VisionHotkeyPressed;
+
+            if (_hotkeyService.UnavailableHotkeys.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    "Warning: these CursorAI shortcuts are already owned by another application "
+                    + "and will not respond:");
+                foreach (string hotkey in _hotkeyService.UnavailableHotkeys)
+                {
+                    Console.Error.WriteLine($"  - {hotkey}");
+                }
+            }
 
             ApplyBuddyState(_buddyStateManager.CurrentState);
             UpdateBuddyPosition();
@@ -88,7 +113,7 @@ public partial class MainWindow : Window
         _buddyStateManager.SetState(nextState);
     }
 
-    private void HotkeyService_CaptureHotkeyPressed(object? sender, EventArgs e)
+    private async void HotkeyService_CaptureHotkeyPressed(object? sender, EventArgs e)
     {
         if (_isShuttingDown)
         {
@@ -97,8 +122,22 @@ public partial class MainWindow : Window
 
         try
         {
+            // The capture itself stays on the UI thread on purpose. ScreenCaptureService reads
+            // GetCursorPos internally, so running it after a thread hop would sample the cursor
+            // later than the keypress and drift the one coordinate this product is grounded on.
+            // BitBlt costs a few milliseconds; PNG encoding a 1080p frame costs far more, so
+            // only encoding and file I/O move off-thread. The frame is already Freeze()d, which
+            // is what makes handing it across threads safe.
             CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
-            DevelopmentCaptureArtifacts artifacts = DevelopmentCaptureStorage.Save(frame, Environment.CurrentDirectory);
+            string baseDirectory = Environment.CurrentDirectory;
+            DevelopmentCaptureArtifacts artifacts = await Task.Run(
+                () => DevelopmentCaptureStorage.Save(frame, baseDirectory));
+
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
             CapturedMonitorInfo monitor = frame.Monitor;
 
             Console.WriteLine("Screen captured");
@@ -123,6 +162,79 @@ public partial class MainWindow : Window
         {
             Console.Error.WriteLine($"Screen capture failed: {exception.Message}");
             Debug.WriteLine($"Screen capture failed: {exception}");
+        }
+    }
+
+    private async void HotkeyService_VisionHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        if (_isVisionAnalysisRunning)
+        {
+            Console.WriteLine("Vision analysis is already running; duplicate activation ignored.");
+            return;
+        }
+
+        _isVisionAnalysisRunning = true;
+        CancellationTokenSource cancellationSource = new();
+        _visionCancellationSource = cancellationSource;
+        Stopwatch elapsed = Stopwatch.StartNew();
+
+        try
+        {
+            CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
+            _buddyStateManager.SetState(BuddyState.Thinking);
+
+            Console.WriteLine("Vision analysis started with Google Gemini.");
+            VisionResult result = await _visionService.AnalyzeAsync(
+                DevelopmentVisionQuestion,
+                frame,
+                cancellationSource.Token);
+
+            if (!_isShuttingDown)
+            {
+                Console.WriteLine($"Vision analysis completed in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+                Console.WriteLine("Gemini vision response:");
+                Console.WriteLine(result.ResponseText);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+            Console.Error.WriteLine($"Vision analysis canceled after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.Error.WriteLine("Cancellation source: application cancellation token");
+            Console.Error.WriteLine("Application cancellation requested: true");
+            Debug.WriteLine("Vision analysis was canceled.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            Console.Error.WriteLine($"Vision analysis failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.Error.WriteLine(exception.Message);
+            Debug.WriteLine($"Vision analysis failed: {exception.GetType().Name}: {exception.Message}");
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Vision analysis failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.Error.WriteLine(
+                $"Failure type: {exception.GetType().Name}. Check network connectivity, API access, rate limits/quota, and configuration.");
+            Debug.WriteLine($"Vision analysis failed: {exception.GetType().Name}.");
+        }
+        finally
+        {
+            if (ReferenceEquals(_visionCancellationSource, cancellationSource))
+            {
+                _visionCancellationSource = null;
+            }
+
+            cancellationSource.Dispose();
+            _isVisionAnalysisRunning = false;
+
+            if (!_isShuttingDown)
+            {
+                _buddyStateManager.SetState(BuddyState.Idle);
+            }
         }
     }
 
@@ -244,6 +356,7 @@ public partial class MainWindow : Window
 
         _cleanupComplete = true;
         _isShuttingDown = true;
+        _visionCancellationSource?.Cancel();
 
         Closed -= MainWindow_Closed;
         SourceInitialized -= MainWindow_SourceInitialized;
@@ -259,6 +372,7 @@ public partial class MainWindow : Window
 
         _hotkeyService.ActivationHotkeyPressed -= HotkeyService_ActivationHotkeyPressed;
         _hotkeyService.CaptureHotkeyPressed -= HotkeyService_CaptureHotkeyPressed;
+        _hotkeyService.VisionHotkeyPressed -= HotkeyService_VisionHotkeyPressed;
 
         try
         {
