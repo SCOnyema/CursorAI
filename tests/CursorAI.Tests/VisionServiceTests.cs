@@ -26,7 +26,7 @@ public class VisionServiceTests
         VisionService service = new(provider);
         using CancellationTokenSource cancellation = new();
 
-        VisionResult result = await service.AnalyzeAsync("What is under my cursor?", frame, cancellation.Token);
+        VisionResult result = await service.AnalyzeAsync("What is under my cursor?", frame, false, cancellation.Token);
 
         // VisionService stamps latency, so the result is a copy of the provider's.
         Assert.Equal(expectedResult.ResponseText, result.ResponseText);
@@ -112,7 +112,7 @@ public class VisionServiceTests
             new PhysicalScreenPoint(10, 10),
             new ForegroundWindowInfo(1, "t", "p"));
 
-        VisionResult result = await service.AnalyzeAsync("q", frame, CancellationToken.None);
+        VisionResult result = await service.AnalyzeAsync("q", frame, false, CancellationToken.None);
 
         Assert.Equal("Answer", result.ResponseText);
         Assert.Equal("gemini-3.8-flash", result.Model);

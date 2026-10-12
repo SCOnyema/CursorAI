@@ -14,9 +14,19 @@ public sealed class VisionService
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     }
 
+    /// <summary>
+    /// Analyses one captured frame.
+    /// </summary>
+    /// <param name="requestTargets">
+    /// When true, also ask the provider to locate the elements its answer refers to, so visual
+    /// guidance can point at them. Opt-in because it roughly triples latency: measured
+    /// 2026-10-12, plain description took 25.5s against a real desktop where detection took
+    /// 66s to 73s, and each call spends one of a 20-per-day allowance either way.
+    /// </param>
     public async Task<VisionResult> AnalyzeAsync(
         string userPrompt,
         CapturedFrame frame,
+        bool requestTargets = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userPrompt);
@@ -33,7 +43,8 @@ public sealed class VisionService
             frame.Monitor,
             frame.CursorScreenPosition,
             frame.CursorPositionInImage,
-            frame.ForegroundWindow);
+            frame.ForegroundWindow,
+            requestTargets);
 
         // Latency is measured here, not in a provider, so it means the same thing for all of
         // them: everything the user waits through after the frame is captured.

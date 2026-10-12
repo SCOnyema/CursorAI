@@ -224,12 +224,15 @@ public class GeminiVisionProviderTests
     }
 
     [Fact]
-    public void RequestTimeout_IsExplicitAndShorterThanTheDotNetDefault()
+    public void RequestTimeout_IsGenerousEnoughForElementDetection()
     {
-        // 60s, calibrated from measurement: a healthy full-res call returns in ~4.4s, but a
-        // loaded model exceeded 30s. Must stay under the 100s .NET default and remain explicit.
-        Assert.Equal(TimeSpan.FromSeconds(60), GeminiVisionProvider.RequestTimeout);
-        Assert.True(GeminiVisionProvider.RequestTimeout < TimeSpan.FromSeconds(100));
+        // Calibrated from measurement, not guessed. Observed against the live API:
+        // plain description 4.4s synthetic and 25.5s on a real desktop; element detection with
+        // coordinates 66.2s and 73.5s. A 60s ceiling killed both detection calls. This now
+        // deliberately exceeds the 100s .NET default, because on a 20-request daily budget a
+        // premature timeout spends a request and gets nothing for it.
+        Assert.Equal(TimeSpan.FromSeconds(120), GeminiVisionProvider.RequestTimeout);
+        Assert.True(GeminiVisionProvider.RequestTimeout > TimeSpan.FromSeconds(75));
     }
 
     [Fact]

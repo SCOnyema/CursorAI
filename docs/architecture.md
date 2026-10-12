@@ -6,7 +6,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.2 — Global controls and application state: complete
 - V0.3 — Screen capture and vision: complete; verified end to end against the live provider
 - V0.4 — Voice input/output: complete; local-only speech recognition and synthesis, verified end to end
-- V0.5 — Visual guidance overlays: planned
+- V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
 - V0.6 — Windows UI Automation grounding: planned
 - V1.0 — First complete working version: planned
 
@@ -56,6 +56,10 @@ Capture correctness rests on two explicit decisions. The application declares pe
 Captures run on the UI thread only as far as the BitBlt, which keeps the cursor sample aligned with the keypress. PNG encoding and file writes move to a background thread; the captured frame is frozen, which is what makes that safe.
 
 Transient Gemini failures (429, 500, 502, 503, 504) are retried up to three times with exponential backoff, and `Retry-After` is honoured: any wait longer than ten seconds fails immediately instead. That rule exists because the free tier allows only 20 requests per day per model and answers an exhausted quota with `Retry-After` hours ahead—retrying spent three requests to be refused three times. Retry applies to the same model only; this is not provider fallback, and no alternative model or provider is ever substituted automatically.
+
+Guidance coordinates come from the provider in screenshot pixels. Gemini reports boxes in its own normalised 0-1000 `box_2d` convention and `GeminiVisionProvider` converts them, so no vendor coordinate format reaches the provider-neutral layer. That convention is not a preference: measured against synthetic screens with known rectangles on 2026-10-12, requesting raw screenshot pixels produced a systematic vertical scaling error, mean IoU 0.24 with centres 29 to 54 pixels out, while the normalised convention gave mean IoU 0.91 to 0.99 with centres within 2 pixels. Three coordinate spaces meet in `OverlayGeometry` — screenshot pixels, physical screen pixels, and device-independent units — and it is kept pure because a single-display machine cannot exercise the multi-monitor paths.
+
+The guidance overlay is excluded from capture with `SetWindowDisplayAffinity`, exactly as the buddy is. Without that, highlights drawn for one question would be captured for the next and the model would describe its own guidance.
 
 A spoken turn runs recognition, capture, analysis, and playback inside one activity, advancing Listening to Thinking to Responding without releasing ownership. Speech never crosses the external trust boundary: both engines are on-device, so the audio path adds no network surface and spends no provider quota. Engine availability depends on machine state outside CursorAI's control, so a missing recogniser, microphone, or output device disables voice alone and is reported at startup rather than preventing the application from running.
 

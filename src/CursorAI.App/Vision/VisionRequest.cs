@@ -13,7 +13,8 @@ public sealed class VisionRequest
         CapturedMonitorInfo monitor,
         PhysicalScreenPoint cursorScreenPosition,
         PhysicalScreenPoint cursorPositionInImage,
-        ForegroundWindowInfo foregroundWindow)
+        ForegroundWindowInfo foregroundWindow,
+        bool requestsTargets = false)
     {
         UserPrompt = userPrompt;
         EncodedImage = encodedImage;
@@ -24,6 +25,7 @@ public sealed class VisionRequest
         CursorScreenPosition = cursorScreenPosition;
         CursorPositionInImage = cursorPositionInImage;
         ForegroundWindow = foregroundWindow;
+        RequestsTargets = requestsTargets;
     }
 
     public string UserPrompt { get; }
@@ -45,4 +47,10 @@ public sealed class VisionRequest
     public PhysicalScreenPoint CursorPositionInImage { get; }
 
     public ForegroundWindowInfo ForegroundWindow { get; }
+
+    /// <summary>
+    /// True when the caller wants located elements to draw guidance on, not just prose.
+    /// Measured 2026-10-12: asking for coordinates roughly triples latency, so it is opt-in.
+    /// </summary>
+    public bool RequestsTargets { get; }
 }

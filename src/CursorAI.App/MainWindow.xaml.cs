@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using CursorAI.App.Capture;
 using CursorAI.App.Input;
 using CursorAI.App.Models;
+using CursorAI.App.Overlay;
 using CursorAI.App.Speech;
 using CursorAI.App.State;
 using CursorAI.App.Vision;
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
     private readonly ScreenCaptureService _screenCaptureService = new();
     private readonly VisionService _visionService;
     private readonly LocalSpeechServices _speechServices;
+    private readonly GuidanceOverlayWindow _guidanceOverlay = new();
     private HotkeyService? _hotkeyService;
     private CancellationTokenSource? _visionCancellationSource;
     private Storyboard? _activeStateStoryboard;
@@ -193,12 +195,14 @@ public partial class MainWindow : Window
 
         // Ownership is taken before the capture so a second press during capture is rejected
         // as well, and so the scope restores whatever state was current beforehand.
-        IDisposable? activity = _buddyStateManager.TryBeginActivity(BuddyState.Thinking);
+        IBuddyActivity? activity = _buddyStateManager.TryBeginActivity(BuddyState.Thinking);
         if (activity is null)
         {
             Console.WriteLine("Vision analysis is already running; duplicate activation ignored.");
             return;
         }
+
+        _guidanceOverlay.HideGuidance();
 
         CancellationTokenSource cancellationSource = new();
         _visionCancellationSource = cancellationSource;
@@ -212,6 +216,7 @@ public partial class MainWindow : Window
             VisionResult result = await _visionService.AnalyzeAsync(
                 DevelopmentVisionQuestion,
                 frame,
+                requestTargets: true,
                 cancellationSource.Token);
 
             if (!_isShuttingDown)
@@ -220,6 +225,7 @@ public partial class MainWindow : Window
                 Console.WriteLine(DescribeResult(result));
                 Console.WriteLine("Vision response:");
                 Console.WriteLine(result.ResponseText);
+                ShowGuidance(activity, frame, result);
             }
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
@@ -260,6 +266,22 @@ public partial class MainWindow : Window
     /// Renders the metadata a provider reported. Absent values are omitted rather than shown as
     /// zero, because providers differ in what they report and zero would be a different claim.
     /// </summary>
+    /// <summary>
+    /// Draws the located elements and moves the buddy to Guiding. Does nothing when the
+    /// provider reported no targets, which is the normal case for a plain description.
+    /// </summary>
+    private void ShowGuidance(IBuddyActivity activity, CapturedFrame frame, VisionResult result)
+    {
+        if (_isShuttingDown || result.Targets is not { Count: > 0 } targets)
+        {
+            return;
+        }
+
+        Console.WriteLine($"Guidance targets: {string.Join(", ", targets.Select(t => t.Label))}");
+        _guidanceOverlay.ShowGuidance(frame.Monitor, targets, frame.PixelWidth, frame.PixelHeight);
+        activity.SetState(BuddyState.Guiding);
+    }
+
     private static string DescribeResult(VisionResult result)
     {
         List<string> parts = [];
@@ -438,6 +460,9 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Guidance from the previous turn is stale the moment a new one starts.
+        _guidanceOverlay.HideGuidance();
+
         CancellationTokenSource cancellationSource = new();
         _visionCancellationSource = cancellationSource;
         Stopwatch elapsed = Stopwatch.StartNew();
@@ -465,6 +490,7 @@ public partial class MainWindow : Window
             VisionResult result = await _visionService.AnalyzeAsync(
                 question,
                 frame,
+                requestTargets: true,
                 cancellationSource.Token);
 
             if (_isShuttingDown)
@@ -477,6 +503,8 @@ public partial class MainWindow : Window
             Console.WriteLine("Vision response:");
             Console.WriteLine(result.ResponseText);
 
+            // Guidance first, so the highlight is on screen while the answer is read out.
+            ShowGuidance(activity, frame, result);
             await SpeakResponseAsync(activity, result, cancellationSource.Token);
         }
         catch (OperationCanceledException)
@@ -548,6 +576,8 @@ public partial class MainWindow : Window
         _isShuttingDown = true;
         _visionCancellationSource?.Cancel();
         _speechServices.Synthesizer?.Cancel();
+        _guidanceOverlay.HideGuidance();
+        _guidanceOverlay.Close();
 
         Closed -= MainWindow_Closed;
         SourceInitialized -= MainWindow_SourceInitialized;

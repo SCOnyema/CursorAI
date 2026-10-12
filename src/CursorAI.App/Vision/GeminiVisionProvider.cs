@@ -32,14 +32,20 @@ public sealed class GeminiVisionProvider : IVisionProvider
     internal static readonly TimeSpan MaxHonoredRetryAfter = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// Per-request timeout. Measured 2026-10-08 against the live API with a full-resolution
-    /// 1920x1080 capture (431 KB base64, comparable to real captures averaging 468 KB):
-    /// gemini-3.5-flash returned in 4.4s, while gemini-3.8-flash under heavy load exceeded 30s.
-    /// Set generously on purpose: the free tier allows only 20 requests per day, so killing a
-    /// slow-but-working request spends a request and gets nothing for it. Timeouts are not
-    /// retried, so this is the true worst case rather than a per-attempt cost.
+    /// Per-request timeout, calibrated from measurement rather than guessed.
+    ///
+    /// Observed against the live API with full-resolution 1920x1080 captures:
+    ///   plain description, synthetic screen   4.4s
+    ///   plain description, real desktop      25.5s
+    ///   element detection with coordinates   66.2s and 73.5s
+    ///
+    /// Detection roughly triples the cost of a description, and an earlier 60s ceiling would
+    /// have killed both detection calls. Set generously on purpose: the free tier allows only
+    /// 20 requests per day per model, so killing a slow-but-working request spends one and
+    /// gets nothing for it. Timeouts are not retried, so this is the true worst case rather
+    /// than a per-attempt cost.
     /// </summary>
-    internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(60);
+    internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(120);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -90,7 +96,10 @@ public sealed class GeminiVisionProvider : IVisionProvider
 
             if (response.IsSuccessStatusCode)
             {
-                return ParseResponse(responseJson);
+                return ParseResponse(
+                    responseJson,
+                    request.ImagePixelWidth,
+                    request.ImagePixelHeight);
             }
 
             TimeSpan retryDelay = TimeSpan.Zero;
@@ -194,7 +203,10 @@ public sealed class GeminiVisionProvider : IVisionProvider
             Store: false);
     }
 
-    internal static VisionResult ParseResponse(string responseJson)
+    internal static VisionResult ParseResponse(
+        string responseJson,
+        int imagePixelWidth = 0,
+        int imagePixelHeight = 0)
     {
         GeminiInteractionResponse? response;
 
@@ -227,10 +239,14 @@ public sealed class GeminiVisionProvider : IVisionProvider
             throw new InvalidOperationException("Gemini returned no usable response text.");
         }
 
+        string combined = string.Join(Environment.NewLine, textParts);
+        GeminiTargetPayload? payload = GeminiTargetParser.TryParse(combined, imagePixelWidth, imagePixelHeight);
+
         return new VisionResult(
-            string.Join(Environment.NewLine, textParts),
+            payload?.Answer ?? combined,
             response?.Model,
-            ToUsage(response?.Usage));
+            ToUsage(response?.Usage),
+            Targets: payload?.Targets);
     }
 
     private static VisionUsage? ToUsage(GeminiInteractionUsage? usage)
