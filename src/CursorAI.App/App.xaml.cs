@@ -1,4 +1,5 @@
 using System.Windows;
+using CursorAI.App.Input;
 using CursorAI.App.Speech;
 using CursorAI.App.State;
 using CursorAI.App.Vision;
@@ -7,11 +8,36 @@ namespace CursorAI.App;
 
 public partial class App : Application
 {
+    /// <summary>
+    /// Session-scoped, so one signed-in user cannot start two CursorAI processes. Two instances
+    /// fight over the same global hotkeys, and the loser reports them as owned by "another
+    /// application" - true, but deeply confusing when that application is itself.
+    /// </summary>
+    private const string SingleInstanceMutexName = @"Local\CursorAI.App.SingleInstance";
+
+    private const int DuplicateInstanceExitCode = 2;
+
+    private readonly Mutex _singleInstanceMutex;
     private readonly IVisionProvider _visionProvider;
 
     public App()
     {
         DevelopmentConsole.TryAttachToParent();
+
+        // Checked before anything is constructed, so a duplicate launch never grabs the
+        // microphone or a provider transport on its way out.
+        _singleInstanceMutex = new Mutex(
+            initiallyOwned: true,
+            SingleInstanceMutexName,
+            out bool isOnlyInstance);
+        if (!isOnlyInstance)
+        {
+            Console.Error.WriteLine(
+                "CursorAI is already running. Use the quit shortcut on the running instance "
+                + $"(default {HotkeyConfiguration.DefaultQuit}) instead of starting a second one.");
+            Environment.Exit(DuplicateInstanceExitCode);
+        }
+
         try
         {
             _visionProvider = VisionProviderFactory.Create();
@@ -65,6 +91,7 @@ public partial class App : Application
     {
         SpeechServices.Dispose();
         _visionProvider.Dispose();
+        _singleInstanceMutex.Dispose();
         base.OnExit(e);
     }
 }

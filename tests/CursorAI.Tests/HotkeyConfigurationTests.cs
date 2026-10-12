@@ -12,6 +12,30 @@ public class HotkeyConfigurationTests
         Assert.Equal("Ctrl + Alt + A", configuration.Activation.DisplayName);
         Assert.Equal("Ctrl + Alt + S", configuration.Capture.DisplayName);
         Assert.Equal("Ctrl + Alt + D", configuration.Vision.DisplayName);
+        Assert.Equal("Ctrl + Alt + Q", configuration.Quit.DisplayName);
+    }
+
+    [Fact]
+    public void Resolve_ResolvesTheQuitShortcutIndependently()
+    {
+        HotkeyConfiguration configuration = HotkeyConfiguration.Resolve(name =>
+            name == HotkeyConfiguration.QuitVariable ? "Ctrl + Shift + F12" : null);
+
+        Assert.Equal("Ctrl + Shift + F12", configuration.Quit.DisplayName);
+        Assert.Equal("Ctrl + Alt + A", configuration.Activation.DisplayName);
+    }
+
+    [Fact]
+    public void QuitShortcut_IsDistinctFromEveryOtherShortcut()
+    {
+        // Registering the same combination twice would silently lose one of them.
+        HotkeyConfiguration c = HotkeyConfiguration.Resolve(_ => null);
+        string[] names =
+        [
+            c.Activation.DisplayName, c.Capture.DisplayName, c.Vision.DisplayName, c.Quit.DisplayName
+        ];
+
+        Assert.Equal(names.Length, names.Distinct().Count());
     }
 
     [Fact]
@@ -20,7 +44,11 @@ public class HotkeyConfigurationTests
         HotkeyConfiguration configuration = HotkeyConfiguration.Resolve(_ => null);
 
         foreach (HotkeyDefinition hotkey in
-            new[] { configuration.Activation, configuration.Capture, configuration.Vision })
+            new[]
+            {
+                configuration.Activation, configuration.Capture, configuration.Vision,
+                configuration.Quit
+            })
         {
             Assert.DoesNotContain("Shift", hotkey.DisplayName);
         }

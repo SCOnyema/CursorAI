@@ -8,11 +8,13 @@ namespace CursorAI.App.Input;
 internal sealed record HotkeyConfiguration(
     HotkeyDefinition Activation,
     HotkeyDefinition Capture,
-    HotkeyDefinition Vision)
+    HotkeyDefinition Vision,
+    HotkeyDefinition Quit)
 {
     internal const string ActivationVariable = "CURSORAI_HOTKEY_ACTIVATE";
     internal const string CaptureVariable = "CURSORAI_HOTKEY_CAPTURE";
     internal const string VisionVariable = "CURSORAI_HOTKEY_VISION";
+    internal const string QuitVariable = "CURSORAI_HOTKEY_QUIT";
 
     // Three keys on the home row rather than four-key chords, mnemonic (Ask / Screenshot /
     // Describe), and adjacent so each is one left-hand motion.
@@ -29,6 +31,11 @@ internal sealed record HotkeyConfiguration(
     internal const string DefaultCapture = "Ctrl + Alt + S";
     internal const string DefaultVision = "Ctrl + Alt + D";
 
+    // The buddy window is click-through with no taskbar entry, so without this there is no way
+    // to stop CursorAI at all. A forgotten instance locked CursorAI.App.exe and broke the build
+    // twice in two sessions before this existed.
+    internal const string DefaultQuit = "Ctrl + Alt + Q";
+
     internal static HotkeyConfiguration FromEnvironment()
     {
         return Resolve(Environment.GetEnvironmentVariable);
@@ -44,7 +51,8 @@ internal sealed record HotkeyConfiguration(
         return new HotkeyConfiguration(
             ResolveOne(readVariable, ActivationVariable, DefaultActivation),
             ResolveOne(readVariable, CaptureVariable, DefaultCapture),
-            ResolveOne(readVariable, VisionVariable, DefaultVision));
+            ResolveOne(readVariable, VisionVariable, DefaultVision),
+            ResolveOne(readVariable, QuitVariable, DefaultQuit));
     }
 
     private static HotkeyDefinition ResolveOne(

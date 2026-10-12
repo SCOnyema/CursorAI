@@ -1,6 +1,6 @@
 # CursorAI — Full Project Brief
 
-**Snapshot date:** 2026-10-08
+**Snapshot date:** 2026-10-12
 **Purpose:** Self-contained context for a collaborating Claude chat with no repository access.
 **Author of this brief:** Claude Code (Opus 5), after a full read of the codebase, a live API probe, and a documentation check.
 
@@ -14,38 +14,102 @@
 
 ---
 
-## 0. Status - end of session 2026-10-08
+## 0. Status - 2026-10-12
 
-**Phases A and B are complete.** Build clean (0 warnings), **38/38 tests pass**, and no test
-touches the network.
+**V0.1 through V0.4 are complete and verified end to end.** Build clean (0 warnings),
+**91/91 tests pass**, no test touches the network. Working tree clean at `2a5b831`.
 
-`[VERIFIED]` **The vision pipeline works end to end for the first time.** A live call with a
-synthetic 800x600 screen - cursor placed on a green "Export PDF" button, with a red
-"Delete File" button 220px away - returned:
+`[VERIFIED]` **The whole product loop works.** Press the Ask shortcut, speak a question,
+and CursorAI recognises it on-device, captures the monitor containing the cursor, asks the
+vision provider, prints the answer with model/latency/token metadata, and reads it aloud.
+Confirmed by the project owner on 2026-10-12.
 
-> "You are looking at a document viewer window displaying **Invoice-2026.pdf** (Invoice
-> #2026-114, showing a total due of $1,240.00). Your cursor (at coordinates 200, 324) is
-> directly over the green **Export PDF** button."
+`[VERIFIED]` **Cursor grounding works at word resolution on real screens.** Live calls
+located the cursor over a specific word ("around the letters e or d") and over a particular
+phrase inside a sidebar, correctly placing it above a Log in button.
 
-It named the correct button. **Cursor grounding, the project's core premise, is proven.**
+### Commits this far
 
-Resolved this session:
+```
+2a5b831 feat: add voice turns and configurable hotkeys
+dc59cb9 feat: implement vision provider selection and metadata reporting
+68e27a5 fix: make V0.3.3 screen understanding work end to end
+9b75f26 feat: add vision provider architecture
+5d84aea feat: add capture and cursor grounding
+70ec039 feat: add monitor screen capture foundation
+533d18a refactor: harden CursorAI lifecycle and cleanup
+629ab5c feat: add global hotkey and visual feedback
+0ec40f4 feat: add CursorAI application state model
+```
+
+### Shortcuts (changed 2026-10-12)
+
+| Action | Shortcut | Mnemonic |
+|---|---|---|
+| Spoken turn | `Ctrl + Alt + A` | **A**sk |
+| Local-only capture | `Ctrl + Alt + S` | **S**creenshot |
+| Vision, canned question | `Ctrl + Alt + D` | **D**escribe |
+
+Three adjacent home-row keys rather than four-key chords. All three are overridable via
+`CURSORAI_HOTKEY_ACTIVATE` / `_CAPTURE` / `_VISION`.
+
+### Everything resolved since this brief was first written
 
 | Was | Now |
 |---|---|
 | Array-wrapped error envelope discarded every Gemini error | `[VERIFIED]` fixed; real messages surface |
 | `error.code` typed `int?`, threw on capacity errors | `[VERIFIED]` fixed; read as text (int or string) |
-| `gemini-3.6-flash` retires 2026-11-19 | `[VERIFIED]` now `gemini-3.8-flash` + `GEMINI_MODEL` override |
-| 100-second .NET default timeout | `[VERIFIED]` explicit 30s |
-| 503s broke ~2 of 3 calls | `[VERIFIED]` retried 3x w/ backoff; 80% per-call becomes ~99% |
-| Buddy in its own screenshots (`[REASONED]`) | `[VERIFIED]` confirmed AND fixed; 2371 -> **0** px |
-| DPI awareness undeclared (`[UNKNOWN]`) | `[VERIFIED]` was SYSTEM_AWARE; now PER_MONITOR via manifest |
-| Encode + file I/O blocked the UI thread | `[VERIFIED]` moved off-thread; BitBlt stays on it deliberately |
-| **NEW:** one hotkey conflict crashed the app at startup | `[VERIFIED]` fixed; degrades per-hotkey |
-| `Api-Revision` header requirement (`[UNKNOWN]`) | `[VERIFIED]` not required |
-| Free tier limited to Flash-Lite? (`[UNKNOWN]`) | `[VERIFIED]` no - key sees all 50 models incl. 3.8-flash |
+| `gemini-3.6-flash` retiring 2026-11-19 | `[VERIFIED]` on `gemini-3.8-flash`; `GEMINI_MODEL` override |
+| 100-second .NET default timeout | `[VERIFIED]` explicit 60s, calibrated from measurement |
+| 503s broke ~2 of 3 calls | `[VERIFIED]` retried 3x w/ backoff |
+| Retrying an exhausted daily quota burned 3 requests | `[VERIFIED]` `Retry-After` honoured; fails fast past 10s |
+| Buddy appeared in its own screenshots | `[VERIFIED]` 2371 -> **0** pixels |
+| DPI awareness undeclared | `[VERIFIED]` SYSTEM_AWARE -> PER_MONITOR via manifest |
+| Encode + file I/O blocked the UI thread | `[VERIFIED]` moved off-thread; BitBlt kept on it deliberately |
+| One hotkey conflict crashed the app at startup | `[VERIFIED]` degrades per-hotkey |
+| `Ctrl + Alt + Space` unavailable, and voice needed it | `[VERIFIED]` defaults moved; hotkeys configurable |
+| Provider choice required a recompile | `[VERIFIED]` `CURSORAI_VISION_PROVIDER` |
+| `IVisionProvider` did not express lifetime | `[VERIFIED]` extends `IDisposable`; App holds the interface |
+| `VisionResult` discarded model/usage/latency | `[VERIFIED]` all three carried; latency owned by `VisionService` |
+| Any writer could stomp the state mid-request | `[VERIFIED]` activity ownership; 5 tests pin it |
+| No voice at all | `[VERIFIED]` local on-device STT + TTS |
+| `Api-Revision` header requirement unknown | `[VERIFIED]` not required |
+| Free tier limited to Flash-Lite? | `[VERIFIED]` no - all 50 models visible; 20 req/day/model |
 
-Still `[UNKNOWN]`: **multi-monitor and mixed-DPI behaviour.** This machine has one display.
+### Facts worth not rediscovering
+
+- **Free tier: 20 requests per day, per model.** Each Describe press or spoken turn spends
+  one. Quota is per model, so `GEMINI_MODEL` is how to keep working after exhausting one.
+- **Real-world full-resolution latency is ~25s**, not the 4.4s a synthetic image suggests;
+  real screens are far denser. This is why the timeout is 60s.
+- **Display is 120 DPI (125% scaling)**, so a 64x64 DIP window is 80x80 physical pixels.
+- **`RegisterHotKey` is a system-wide first-come claim** and Windows exposes no way to ask
+  who holds a combination. Measured: only `Ctrl + Alt + Space` and `Alt + F4` were owned out
+  of 51 tried; all 26 `Ctrl + Alt + <letter>` were free.
+- **Speech engines present on this machine:** 5 voices, en-US recogniser `MS-1033-80-DESK`.
+
+### Still open
+
+1. `[UNKNOWN]` **Multi-monitor and mixed-DPI.** Single-display machine; `CursorGrounding`'s
+   negative-origin math has never executed. Matters more at V0.5, since an overlay has to
+   land on the right monitor.
+2. ~~No way to quit.~~ **RESOLVED 2026-10-12.** `Ctrl + Alt + Q` shuts CursorAI down, and a
+   single-instance mutex makes a second launch exit with an explanation instead of competing
+   for the same hotkeys. `[VERIFIED]`: second launch exits code 2; a synthesized Ctrl + Alt + Q
+   ended the first instance cleanly with code 0. A tray icon is deferred to V1.0 polish - it
+   needs Shell_NotifyIcon, a dedicated message-only window (the buddy is WS_EX_NOACTIVATE and
+   click-through, so TrackPopupMenu misbehaves on it), an authored icon and menu P/Invoke,
+   which is a lot of surface for a problem a hotkey already solves.
+3. **GDI BitBlt is the wrong primitive for V0.5.** Returns black for hardware-overlay and
+   protected content, `CAPTUREBLT` can flicker, whole-monitor only.
+   `Windows.Graphics.Capture` gives per-window capture, which V0.6 UI Automation wants too.
+4. `DevelopmentCaptureStorage.Save` takes `Environment.CurrentDirectory` through a parameter
+   named `repositoryRoot`; three `artifacts/` directories exist as a result.
+5. `DevelopmentCaptureStorageTests` still covers only `CreateFileName`, which nothing in
+   production calls, while `Save` itself has no coverage.
+6. `[UNKNOWN]` Does `CAPTUREBLT` cause visible flicker on this hardware?
+7. Open design question: the canned Describe question remains hard-coded. Voice supersedes
+   it, so decide whether Describe keeps a fixed prompt, gains free-text input, or is retired.
 
 ---
 
@@ -84,7 +148,14 @@ src/CursorAI.App/
   DevelopmentConsole.cs         AttachConsole to parent for dev output
   InternalsVisibleTo.cs
   Models/BuddyState.cs          enum: Idle, Listening, Thinking, Responding, Guiding
-  State/BuddyStateManager.cs    CurrentState + StateChanged event
+  Input/HotkeyParser.cs         pure: "Ctrl + Alt + A" -> modifiers + virtual key
+  Input/HotkeyDefinition.cs / HotkeyConfiguration.cs   configured shortcuts
+  Speech/ISpeechRecognizer.cs / ISpeechSynthesizer.cs  local-only speech boundary
+  Speech/WindowsSpeechRecognizer.cs / WindowsSpeechSynthesizer.cs
+  Speech/LocalSpeechServices.cs    creates engines; absence degrades, never throws
+  Speech/SpokenResponseFormatter.cs  strips markdown before playback
+  State/IBuddyActivity.cs       exclusive state ownership for one activity
+  State/BuddyStateManager.cs    CurrentState + StateChanged + activity ownership
   State/BuddyStateChangedEventArgs.cs
   Capture/
     ScreenCaptureService.cs     GDI BitBlt of the monitor containing the cursor
@@ -120,9 +191,9 @@ artifacts/                     gitignored; local capture output
 |---|---|---|
 | V0.1 | Cursor companion (floating buddy) | complete |
 | V0.2 | Global hotkeys + application state model | complete |
-| V0.3 | Screen capture + vision | in progress (V0.3.3) |
-| V0.4 | Voice input/output | planned |
-| V0.5 | Visual guidance overlays | planned |
+| V0.3 | Screen capture + vision | **complete**, verified end to end |
+| V0.4 | Voice input/output | **complete**, verified end to end |
+| V0.5 | Visual guidance overlays | next |
 | V0.6 | Windows UI Automation grounding | planned |
 | V1.0 | First complete working version | planned |
 
@@ -145,7 +216,7 @@ One roadmap step per commit, with README and `docs/architecture.md` updated in t
 
 ## 4. What actually works today
 
-`[VERIFIED]` Build: `dotnet build` succeeds, **0 warnings, 0 errors**. Tests: **38/38 pass** (26 at the start of this session).
+`[VERIFIED]` Build: `dotnet build` succeeds, **0 warnings, 0 errors**. Tests: **91/91 pass**, none touching the network.
 
 **The buddy** — 64×64 transparent, borderless, topmost, click-through window (`WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`), drawn as a purple eyeball with two white eyes. Repositions every 16 ms to cursor + (16,16), DPI-converted via `TransformFromDevice`, clamped to the work area of whichever monitor holds the cursor. No taskbar entry, no tray icon.
 
@@ -376,36 +447,25 @@ The engineering judgment is better than typical agent-generated scaffolding — 
 
 ## 9. Plan
 
-### Phase A — Unblock (in progress)
-1. ✅ **DONE** Fix array-wrapped error-envelope parsing; regression tests added, one using the real captured body verbatim. Both envelope shapes accepted; unparseable bodies now preserved as evidence. Verified end-to-end against the live API.
-2. ✅ **DONE** Model bumped to `gemini-3.8-flash`.
-3. ✅ **DONE** Explicit 30-second `HttpClient` timeout (`GeminiVisionProvider.RequestTimeout`), replacing the 100-second .NET default. Diagnostics now report it as deliberate rather than defaulted.
-4. ⬜ **BLOCKED ON A KEY** — make one *successful* end-to-end call. Error paths are now proven; the success path is not. Every layer past the request builder remains unexercised.
-5. ⬜ **BLOCKED ON A KEY** — investigate the `Api-Revision` header.
+Phases A (unblock), B (capture fidelity), C (abstraction) and D's first step (V0.4 voice)
+are all complete. What remains:
 
-### Phase B - Fix what corrupts the data: COMPLETE
-6. DONE - buddy excluded from its own captures; 2371 -> 0 pixels, verified.
-7. DONE - DPI declared via `app.manifest`; SYSTEM_AWARE -> PER_MONITOR, verified.
-   STILL BLOCKED - second-monitor verification needs a second display.
-8. DONE - encode + file I/O off the UI thread; BitBlt kept on it deliberately.
-9. DONE (unplanned) - hotkey registration degrades instead of crashing.
+### Before V0.5 - decide the capture primitive
+Overlays inherit whatever coordinate model is locked in, so swapping GDI BitBlt for
+`Windows.Graphics.Capture` afterwards means redoing them. Recommended: migrate first.
+Per-window capture is also what V0.6 UI Automation grounding wants.
 
-### Phase C — Make the abstraction deliver
-9. Provider selection as **runtime configuration**, not a recompile — env/`appsettings`-driven factory.
-10. `IVisionProvider : IDisposable`; stop leaking the concrete type in `App`.
-11. Enrich `VisionResult` with model id, token usage, and latency.
-12. Fix state-transition validation before voice adds concurrency.
-13. Commit the V0.3.3 work (currently uncommitted) with docs updated in the same commit, per existing cadence.
+### V0.5 - visual guidance overlays
+Draw on top of real UI elements to point at what the user should click. Depends on
+coordinates being trustworthy, which is why items 1 and 3 under "Still open" matter here
+rather than later.
 
-### Phase D — Resume the roadmap
-V0.4 voice → V0.5 overlays → V0.6 UI Automation → V1.0.
-Consider replacing GDI BitBlt with `Windows.Graphics.Capture` before V0.5/V0.6, since per-window capture is what UI Automation grounding wants.
+### V0.6 - Windows UI Automation grounding
+Replace pixel reasoning with real element identity where available.
 
-### Strategic note on providers
-
-Developing on Gemini's free tier to avoid spending money is sound, and the thing that makes it safe is **already built**: `IVisionProvider` genuinely abstracts the vendor. Choosing Gemini does **not** close the door on OpenAI, Claude, or anything else. The honest gap is that switching is currently a *recompile* rather than a *setting* — which is backwards for a free-tier-first strategy where you want to develop cheap and A/B against paid models without rebuilding. Phase C item 9 addresses exactly this.
-
----
+### Housekeeping, any time
+A tray icon with Quit (item 2 - it has broken the build twice); the capture-directory
+parameter (item 4); real coverage for `DevelopmentCaptureStorage.Save` (item 5).
 
 ## 10. Open questions
 

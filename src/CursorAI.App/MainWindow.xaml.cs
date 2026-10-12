@@ -82,6 +82,7 @@ public partial class MainWindow : Window
             _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
             _hotkeyService.CaptureHotkeyPressed += HotkeyService_CaptureHotkeyPressed;
             _hotkeyService.VisionHotkeyPressed += HotkeyService_VisionHotkeyPressed;
+            _hotkeyService.QuitHotkeyPressed += HotkeyService_QuitHotkeyPressed;
 
             if (_hotkeyService.UnavailableHotkeys.Count > 0)
             {
@@ -299,6 +300,24 @@ public partial class MainWindow : Window
         return parts.Count == 0
             ? "No provider metadata reported."
             : string.Join("  ", parts);
+    }
+
+    /// <summary>
+    /// The only way to stop CursorAI from the keyboard. The buddy window is click-through with
+    /// no taskbar entry or tray icon, so before this a running instance could only be ended
+    /// through Task Manager - and a forgotten one locks the build output.
+    /// </summary>
+    private void HotkeyService_QuitHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        Console.WriteLine("Quit requested; shutting down.");
+        _visionCancellationSource?.Cancel();
+        _speechServices.Synthesizer?.Cancel();
+        Application.Current.Shutdown();
     }
 
     private void BuddyStateManager_StateChanged(object? sender, BuddyStateChangedEventArgs e)
@@ -545,6 +564,7 @@ public partial class MainWindow : Window
         _hotkeyService.ActivationHotkeyPressed -= HotkeyService_ActivationHotkeyPressed;
         _hotkeyService.CaptureHotkeyPressed -= HotkeyService_CaptureHotkeyPressed;
         _hotkeyService.VisionHotkeyPressed -= HotkeyService_VisionHotkeyPressed;
+        _hotkeyService.QuitHotkeyPressed -= HotkeyService_QuitHotkeyPressed;
 
         try
         {

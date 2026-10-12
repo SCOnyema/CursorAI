@@ -23,6 +23,7 @@ Exactly one provider is constructed. An unrecognised value stops startup with an
 
 - **Ctrl + Alt + A** (*Ask*) starts a spoken turn: CursorAI listens, captures the monitor containing the cursor, asks the active vision provider your spoken question, then reads the answer aloud. Where speech recognition is unavailable it falls back to toggling the Idle and Listening states.
 - **Ctrl + Alt + S** (*Screenshot*) performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
+- **Ctrl + Alt + Q** (*Quit*) shuts CursorAI down. The buddy is click-through with no taskbar entry, so this is the only way to stop it from the keyboard.
 - **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
 The temporary vision question is: “What am I looking at, and what is under my cursor?” The returned text is currently written to the terminal used to launch CursorAI with `dotnet run`, together with the model, latency, and token counts the provider reported; no chat or response UI exists yet.
@@ -31,7 +32,9 @@ While a request is in flight it owns the buddy's visual state: the idle/listenin
 
 If another application already owns one of these shortcuts, CursorAI starts anyway and lists the unavailable ones on stderr; only losing all three is fatal.
 
-The defaults are three adjacent home-row keys rather than four-key chords, so each is one left-hand motion, and the letters are mnemonic: **A**sk, **S**creenshot, **D**escribe.
+The defaults are three-key combinations rather than four-key chords, so each is one left-hand motion, and the letters are mnemonic: **A**sk, **S**creenshot, **D**escribe, **Q**uit.
+
+Only one CursorAI process may run per signed-in user. A second launch exits immediately with an explanation rather than starting, because two instances compete for the same global hotkeys and the loser reports them as owned by “another application” — true, but confusing when that application is itself.
 
 Shortcuts are configurable because `RegisterHotKey` is a system-wide, first-come claim: whichever process registers a combination first owns it until it exits, and Windows offers no way to ask who that is. Measured on the development machine, only `Ctrl + Alt + Space` and `Alt + F4` were already owned out of 51 combinations tried, while all 26 `Ctrl + Alt + <letter>` combinations were free. The earlier `Ctrl + Alt + Space` default was simply unlucky; input-method switchers and launcher tools commonly claim it.
 
@@ -39,6 +42,7 @@ Shortcuts are configurable because `RegisterHotKey` is a system-wide, first-come
 $env:CURSORAI_HOTKEY_ACTIVATE = "Ctrl + Alt + A"
 $env:CURSORAI_HOTKEY_CAPTURE  = "Ctrl + Alt + S"
 $env:CURSORAI_HOTKEY_VISION   = "Ctrl + Alt + D"
+$env:CURSORAI_HOTKEY_QUIT     = "Ctrl + Alt + Q"
 ```
 
 On keyboard layouts that use **AltGr** to type accented characters, AltGr is `Ctrl + Alt`, so these defaults can collide with ordinary typing. Override them if that applies to you.
