@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using CursorAI.App.Input;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -13,13 +14,7 @@ internal static class NativeMethods
     private const int ExtendedWindowStyleIndex = -20;
     private const long TransparentExtendedStyle = 0x00000020L;
     private const long NoActivateExtendedStyle = 0x08000000L;
-    private const uint AltHotkeyModifier = 0x0001;
-    private const uint ControlHotkeyModifier = 0x0002;
-    private const uint ShiftHotkeyModifier = 0x0004;
     private const uint NoRepeatHotkeyModifier = 0x4000;
-    private const uint SpaceVirtualKey = 0x20;
-    private const uint SKeyVirtualKey = 0x53;
-    private const uint VKeyVirtualKey = 0x56;
     private const uint MonitorDefaultToNearest = 2;
     private const uint MonitorInfoPrimaryFlag = 1;
     private const uint SourceCopyRasterOperation = 0x00CC0020;
@@ -107,25 +102,21 @@ internal static class NativeMethods
         int sourceY,
         uint rasterOperation);
 
-    internal static bool RegisterActivationHotkey(nint windowHandle, int id)
+    /// <summary>
+    /// Registers one configured shortcut. MOD_NOREPEAT is added here so held keys fire once.
+    /// </summary>
+    internal static bool RegisterHotkey(nint windowHandle, int id, HotkeyDefinition hotkey)
     {
-        uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | NoRepeatHotkeyModifier;
-        return RegisterApplicationHotkey(windowHandle, id, modifiers, SpaceVirtualKey, "Ctrl + Alt + Space");
+        ArgumentNullException.ThrowIfNull(hotkey);
+        return RegisterApplicationHotkey(
+            windowHandle,
+            id,
+            hotkey.Modifiers | NoRepeatHotkeyModifier,
+            hotkey.VirtualKey,
+            hotkey.DisplayName);
     }
 
     internal static bool TryAttachToParentConsole() => AttachConsole(AttachParentProcess);
-
-    internal static bool RegisterCaptureHotkey(nint windowHandle, int id)
-    {
-        uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | ShiftHotkeyModifier | NoRepeatHotkeyModifier;
-        return RegisterApplicationHotkey(windowHandle, id, modifiers, SKeyVirtualKey, "Ctrl + Alt + Shift + S");
-    }
-
-    internal static bool RegisterVisionHotkey(nint windowHandle, int id)
-    {
-        uint modifiers = ControlHotkeyModifier | AltHotkeyModifier | ShiftHotkeyModifier | NoRepeatHotkeyModifier;
-        return RegisterApplicationHotkey(windowHandle, id, modifiers, VKeyVirtualKey, "Ctrl + Alt + Shift + V");
-    }
 
     internal static nint GetForegroundWindowHandle() => GetForegroundWindow();
 

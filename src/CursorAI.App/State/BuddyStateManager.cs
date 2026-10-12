@@ -64,7 +64,7 @@ public sealed class BuddyStateManager
     /// restores whatever state was current beforehand. Returns null when another activity
     /// already owns it, which is also how duplicate activation is rejected.
     /// </summary>
-    public IDisposable? TryBeginActivity(BuddyState state)
+    public IBuddyActivity? TryBeginActivity(BuddyState state)
     {
         BuddyStateChangedEventArgs? change;
         ActivityScope scope;
@@ -83,6 +83,28 @@ public sealed class BuddyStateManager
 
         Raise(change);
         return scope;
+    }
+
+    /// <summary>
+    /// Changes state on behalf of the owning activity. A voice turn moves through Listening,
+    /// Thinking and Responding without ever releasing ownership, so the owner must be able to
+    /// advance the visual while ambient writers stay locked out.
+    /// </summary>
+    private void SetActivityState(ActivityScope scope, BuddyState state)
+    {
+        BuddyStateChangedEventArgs? change;
+
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_activity, scope))
+            {
+                return;
+            }
+
+            change = Apply(state);
+        }
+
+        Raise(change);
     }
 
     private void EndActivity(ActivityScope scope)
@@ -126,11 +148,19 @@ public sealed class BuddyStateManager
     }
 
     private sealed class ActivityScope(BuddyStateManager manager, BuddyState stateBeforeActivity)
-        : IDisposable
+        : IBuddyActivity
     {
         private bool _isDisposed;
 
         internal BuddyState StateBeforeActivity { get; } = stateBeforeActivity;
+
+        public void SetState(BuddyState state)
+        {
+            if (!_isDisposed)
+            {
+                manager.SetActivityState(this, state);
+            }
+        }
 
         public void Dispose()
         {

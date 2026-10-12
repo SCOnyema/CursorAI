@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using CursorAI.App.Capture;
 using CursorAI.App.Input;
 using CursorAI.App.Models;
+using CursorAI.App.Speech;
 using CursorAI.App.State;
 using CursorAI.App.Vision;
 
@@ -20,10 +21,14 @@ public partial class MainWindow : Window
     private const string DevelopmentVisionQuestion = "What am I looking at, and what is under my cursor?";
     private static readonly TimeSpan TrackingInterval = TimeSpan.FromMilliseconds(16);
 
+    /// <summary>How long to wait for speech to begin before abandoning a voice turn.</summary>
+    private static readonly TimeSpan VoiceListenTimeout = TimeSpan.FromSeconds(8);
+
     private readonly BuddyStateManager _buddyStateManager;
     private readonly DispatcherTimer _cursorTrackingTimer;
     private readonly ScreenCaptureService _screenCaptureService = new();
     private readonly VisionService _visionService;
+    private readonly LocalSpeechServices _speechServices;
     private HotkeyService? _hotkeyService;
     private CancellationTokenSource? _visionCancellationSource;
     private Storyboard? _activeStateStoryboard;
@@ -36,6 +41,7 @@ public partial class MainWindow : Window
 
         _buddyStateManager = ((App)Application.Current).BuddyStateManager;
         _visionService = ((App)Application.Current).VisionService;
+        _speechServices = ((App)Application.Current).SpeechServices;
 
         _cursorTrackingTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
@@ -72,7 +78,7 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("The CursorAI hotkeys are already initialized.");
             }
 
-            _hotkeyService = new HotkeyService(source);
+            _hotkeyService = new HotkeyService(source, HotkeyConfiguration.FromEnvironment());
             _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
             _hotkeyService.CaptureHotkeyPressed += HotkeyService_CaptureHotkeyPressed;
             _hotkeyService.VisionHotkeyPressed += HotkeyService_VisionHotkeyPressed;
@@ -99,13 +105,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private void HotkeyService_ActivationHotkeyPressed(object? sender, EventArgs e)
+    private async void HotkeyService_ActivationHotkeyPressed(object? sender, EventArgs e)
     {
         if (_isShuttingDown)
         {
             return;
         }
 
+        if (_speechServices.CanListen)
+        {
+            await RunVoiceTurnAsync();
+            return;
+        }
+
+        // Without a recogniser the shortcut keeps its old cosmetic behaviour, so the buddy
+        // still has a visible Listening state to look at during development.
         BuddyState nextState = _buddyStateManager.CurrentState == BuddyState.Idle
             ? BuddyState.Listening
             : BuddyState.Idle;
@@ -391,6 +405,114 @@ public partial class MainWindow : Window
         Top = buddyPosition.Y;
     }
 
+    /// <summary>
+    /// One spoken turn: listen, capture the screen, analyse it, then speak the answer.
+    /// Listening, Thinking and Responding all happen inside a single activity so the buddy's
+    /// visual advances without ambient writers being able to interrupt it.
+    /// </summary>
+    private async Task RunVoiceTurnAsync()
+    {
+        IBuddyActivity? activity = _buddyStateManager.TryBeginActivity(BuddyState.Listening);
+        if (activity is null)
+        {
+            Console.WriteLine("Voice turn ignored: a request is already in flight.");
+            return;
+        }
+
+        CancellationTokenSource cancellationSource = new();
+        _visionCancellationSource = cancellationSource;
+        Stopwatch elapsed = Stopwatch.StartNew();
+
+        try
+        {
+            Console.WriteLine("Listening...");
+            string? question = await _speechServices.Recognizer!.RecognizeOnceAsync(
+                VoiceListenTimeout,
+                cancellationSource.Token);
+
+            if (string.IsNullOrWhiteSpace(question))
+            {
+                Console.WriteLine("Nothing was recognised; voice turn abandoned.");
+                return;
+            }
+
+            Console.WriteLine($"Heard: {question}");
+
+            // Capture only after the question is known, so the screen reflects what is being
+            // asked about rather than whatever was showing when the hotkey was pressed.
+            CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
+            activity.SetState(BuddyState.Thinking);
+
+            VisionResult result = await _visionService.AnalyzeAsync(
+                question,
+                frame,
+                cancellationSource.Token);
+
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            Console.WriteLine($"Voice turn completed in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.WriteLine(DescribeResult(result));
+            Console.WriteLine("Vision response:");
+            Console.WriteLine(result.ResponseText);
+
+            await SpeakResponseAsync(activity, result, cancellationSource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine($"Voice turn canceled after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            Console.Error.WriteLine($"Voice turn failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.Error.WriteLine(exception.Message);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Voice turn failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.Error.WriteLine(
+                $"Failure type: {exception.GetType().Name}. Check the microphone, network "
+                + "connectivity, API access, and rate limits/quota.");
+            Debug.WriteLine($"Voice turn failed: {exception}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_visionCancellationSource, cancellationSource))
+            {
+                _visionCancellationSource = null;
+            }
+
+            cancellationSource.Dispose();
+            activity.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Speaks the answer, if this machine can. A missing synthesiser is not an error: the text
+    /// has already been written to the console.
+    /// </summary>
+    private async Task SpeakResponseAsync(
+        IBuddyActivity activity,
+        VisionResult result,
+        CancellationToken cancellationToken)
+    {
+        if (_speechServices.Synthesizer is not { } synthesizer)
+        {
+            return;
+        }
+
+        string spoken = SpokenResponseFormatter.Format(result.ResponseText);
+        if (spoken.Length == 0)
+        {
+            return;
+        }
+
+        activity.SetState(BuddyState.Responding);
+        await synthesizer.SpeakAsync(spoken, cancellationToken);
+    }
+
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         Cleanup();
@@ -406,6 +528,7 @@ public partial class MainWindow : Window
         _cleanupComplete = true;
         _isShuttingDown = true;
         _visionCancellationSource?.Cancel();
+        _speechServices.Synthesizer?.Cancel();
 
         Closed -= MainWindow_Closed;
         SourceInitialized -= MainWindow_SourceInitialized;

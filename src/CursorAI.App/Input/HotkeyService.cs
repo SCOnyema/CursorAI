@@ -19,35 +19,38 @@ internal sealed class HotkeyService : IDisposable
     private bool _isDisposed;
     private bool _isHookInstalled;
 
-    internal HotkeyService(HwndSource source)
+    private readonly HotkeyConfiguration _configuration;
+
+    internal HotkeyService(HwndSource source, HotkeyConfiguration configuration)
     {
         _source = source;
         _windowHandle = source.Handle;
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 
         try
         {
             List<string> unavailable = [];
 
-            _isActivationRegistered = NativeMethods.RegisterActivationHotkey(
-                _windowHandle, ActivationHotkeyId);
-            if (!_isActivationRegistered)
-            {
-                unavailable.Add("Ctrl + Alt + Space (idle/listening toggle)");
-            }
+            _isActivationRegistered = Register(
+                ActivationHotkeyId,
+                _configuration.Activation,
+                "idle/listening toggle",
+                HotkeyConfiguration.ActivationVariable,
+                unavailable);
 
-            _isCaptureRegistered = NativeMethods.RegisterCaptureHotkey(
-                _windowHandle, CaptureHotkeyId);
-            if (!_isCaptureRegistered)
-            {
-                unavailable.Add("Ctrl + Alt + Shift + S (local capture)");
-            }
+            _isCaptureRegistered = Register(
+                CaptureHotkeyId,
+                _configuration.Capture,
+                "local capture",
+                HotkeyConfiguration.CaptureVariable,
+                unavailable);
 
-            _isVisionRegistered = NativeMethods.RegisterVisionHotkey(
-                _windowHandle, VisionHotkeyId);
-            if (!_isVisionRegistered)
-            {
-                unavailable.Add("Ctrl + Alt + Shift + V (vision analysis)");
-            }
+            _isVisionRegistered = Register(
+                VisionHotkeyId,
+                _configuration.Vision,
+                "vision analysis",
+                HotkeyConfiguration.VisionVariable,
+                unavailable);
 
             UnavailableHotkeys = unavailable;
 
@@ -92,9 +95,9 @@ internal sealed class HotkeyService : IDisposable
 
         List<string> failures = [];
         int firstError = 0;
-        TryUnregister(VisionHotkeyId, "Ctrl + Alt + Shift + V", ref _isVisionRegistered, failures, ref firstError);
-        TryUnregister(CaptureHotkeyId, "Ctrl + Alt + Shift + S", ref _isCaptureRegistered, failures, ref firstError);
-        TryUnregister(ActivationHotkeyId, "Ctrl + Alt + Space", ref _isActivationRegistered, failures, ref firstError);
+        TryUnregister(VisionHotkeyId, _configuration.Vision.DisplayName, ref _isVisionRegistered, failures, ref firstError);
+        TryUnregister(CaptureHotkeyId, _configuration.Capture.DisplayName, ref _isCaptureRegistered, failures, ref firstError);
+        TryUnregister(ActivationHotkeyId, _configuration.Activation.DisplayName, ref _isActivationRegistered, failures, ref firstError);
 
         if (_isHookInstalled)
         {
@@ -112,11 +115,30 @@ internal sealed class HotkeyService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Registers one shortcut, recording an unavailable one with the variable that changes it.
+    /// </summary>
+    private bool Register(
+        int id,
+        HotkeyDefinition hotkey,
+        string role,
+        string environmentVariable,
+        List<string> unavailable)
+    {
+        if (NativeMethods.RegisterHotkey(_windowHandle, id, hotkey))
+        {
+            return true;
+        }
+
+        unavailable.Add($"{hotkey.DisplayName} ({role}) - set {environmentVariable} to choose another");
+        return false;
+    }
+
     private void RollBackRegistrations()
     {
-        RollBackRegistration(VisionHotkeyId, "Ctrl + Alt + Shift + V", ref _isVisionRegistered);
-        RollBackRegistration(CaptureHotkeyId, "Ctrl + Alt + Shift + S", ref _isCaptureRegistered);
-        RollBackRegistration(ActivationHotkeyId, "Ctrl + Alt + Space", ref _isActivationRegistered);
+        RollBackRegistration(VisionHotkeyId, _configuration.Vision.DisplayName, ref _isVisionRegistered);
+        RollBackRegistration(CaptureHotkeyId, _configuration.Capture.DisplayName, ref _isCaptureRegistered);
+        RollBackRegistration(ActivationHotkeyId, _configuration.Activation.DisplayName, ref _isActivationRegistered);
     }
 
     private void RollBackRegistration(int id, string name, ref bool isRegistered)

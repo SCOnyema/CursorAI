@@ -2,7 +2,7 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.3.3 — First Real Screen Understanding**
+Current status: **V0.4 — Voice Input and Output**
 
 Technology stack: C#, .NET 10, WPF
 
@@ -21,15 +21,37 @@ Exactly one provider is constructed. An unrecognised value stops startup with an
 
 ## Development shortcuts
 
-- **Ctrl + Alt + Space** toggles the existing Idle and Listening states. Microphone listening is not implemented.
-- **Ctrl + Alt + Shift + S** performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
-- **Ctrl + Alt + Shift + V** explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
+- **Ctrl + Alt + A** (*Ask*) starts a spoken turn: CursorAI listens, captures the monitor containing the cursor, asks the active vision provider your spoken question, then reads the answer aloud. Where speech recognition is unavailable it falls back to toggling the Idle and Listening states.
+- **Ctrl + Alt + S** (*Screenshot*) performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
+- **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
 The temporary vision question is: “What am I looking at, and what is under my cursor?” The returned text is currently written to the terminal used to launch CursorAI with `dotnet run`, together with the model, latency, and token counts the provider reported; no chat or response UI exists yet.
 
 While a request is in flight it owns the buddy's visual state: the idle/listening toggle is refused rather than cancelling the Thinking animation, and when the request ends the state that was current beforehand is restored.
 
-If another application already owns one of these shortcuts, CursorAI starts anyway and lists the unavailable ones on stderr; only losing all three is fatal. On the development machine **Ctrl + Alt + Space** is owned by another process, which previously crashed CursorAI at startup.
+If another application already owns one of these shortcuts, CursorAI starts anyway and lists the unavailable ones on stderr; only losing all three is fatal.
+
+The defaults are three adjacent home-row keys rather than four-key chords, so each is one left-hand motion, and the letters are mnemonic: **A**sk, **S**creenshot, **D**escribe.
+
+Shortcuts are configurable because `RegisterHotKey` is a system-wide, first-come claim: whichever process registers a combination first owns it until it exits, and Windows offers no way to ask who that is. Measured on the development machine, only `Ctrl + Alt + Space` and `Alt + F4` were already owned out of 51 combinations tried, while all 26 `Ctrl + Alt + <letter>` combinations were free. The earlier `Ctrl + Alt + Space` default was simply unlucky; input-method switchers and launcher tools commonly claim it.
+
+```powershell
+$env:CURSORAI_HOTKEY_ACTIVATE = "Ctrl + Alt + A"
+$env:CURSORAI_HOTKEY_CAPTURE  = "Ctrl + Alt + S"
+$env:CURSORAI_HOTKEY_VISION   = "Ctrl + Alt + D"
+```
+
+On keyboard layouts that use **AltGr** to type accented characters, AltGr is `Ctrl + Alt`, so these defaults can collide with ordinary typing. Override them if that applies to you.
+
+Accepted forms are any combination of `Ctrl`, `Alt`, `Shift`, and `Win` plus one key: a letter, a digit, `F1`-`F24`, or a name such as `Space`, `Enter`, `Delete`, or `PageDown`. Malformed text stops startup and names the variable at fault; a combination with no modifier is rejected, because it would capture that key system-wide.
+
+## Voice
+
+Speech recognition and synthesis both run **entirely on this machine** through the Windows speech engines. Microphone audio never leaves the computer, so voice stays inside the local trust boundary and consumes none of the vision provider's request quota. Only the screenshot and the recognised question cross the boundary, exactly as the **V** shortcut already does.
+
+A spoken turn waits up to eight seconds for speech to begin, then abandons the attempt rather than holding the microphone open. The spoken reply has markdown stripped first, since a synthesiser otherwise reads `**Export PDF**` as “star star Export PDF star star”, and is shortened to roughly 600 characters at a sentence boundary.
+
+Voice depends on machine state CursorAI does not control: an installed speech recognition language, a microphone, an output device. Any of those missing is reported at startup and disables only voice; vision by hotkey keeps working.
 
 ## API keys
 
@@ -52,7 +74,7 @@ The default is `gemini-3.8-flash`. Transient capacity failures are retried up to
 
 ### Free-tier quota
 
-The Gemini free tier allows **20 requests per day, per model**. Each **Ctrl + Alt + Shift + V** press spends one. When the daily allowance is gone the API answers 429 with `Retry-After` set hours ahead; CursorAI reports that and stops rather than retrying, because retrying would spend further requests to receive the same refusal.
+The Gemini free tier allows **20 requests per day, per model**. Each **Ctrl + Alt + D** press, and each spoken turn, spends one. When the daily allowance is gone the API answers 429 with `Retry-After` set hours ahead; CursorAI reports that and stops rather than retrying, because retrying would spend further requests to receive the same refusal.
 
 Because the quota is per model, `GEMINI_MODEL` is also the way to keep testing after exhausting one. Measured on 2026-10-08: a full-resolution 1920x1080 call to `gemini-3.5-flash` completed in 4.4 seconds; `gemini-3.8-flash` under heavy load exceeded 30 seconds, which is why the request timeout is 60 seconds.
 
@@ -68,6 +90,6 @@ These assignments affect only the current PowerShell process/session and child p
 
 The buddy window is excluded from screen capture via `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`. Before this, the window—layered because of `AllowsTransparency`—was pulled into CursorAI's own screenshots by `CAPTUREBLT`, covering an 80x80 pixel region at cursor+(20,20) and occluding the very thing the cursor pointed at.
 
-Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **S** shortcut never uploads data. Only an explicit **Ctrl + Alt + Shift + V** activation sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. CursorAI explicitly sends `store=false`, so this V0.3.3 request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
+Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised text of your question; the audio itself never leaves the machine, because recognition runs on-device. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
 
 Developers using Gemini’s free tier should avoid testing with sensitive or private screens and review Google’s current Gemini API data-use terms before submitting real sensitive information.
