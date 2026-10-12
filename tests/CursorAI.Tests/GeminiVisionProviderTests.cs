@@ -68,7 +68,7 @@ public class GeminiVisionProviderTests
     }
 
     [Fact]
-    public void ParseResponseText_ReturnsTextFromFinalModelOutputStep()
+    public void ParseResponse_ReturnsTextFromFinalModelOutputStep()
     {
         const string responseJson = """
             {
@@ -89,18 +89,18 @@ public class GeminiVisionProviderTests
             }
             """;
 
-        string result = GeminiVisionProvider.ParseResponseText(responseJson);
+        string result = GeminiVisionProvider.ParseResponse(responseJson).ResponseText;
 
         Assert.Equal($"First paragraph.{Environment.NewLine}Second paragraph.", result);
     }
 
     [Fact]
-    public void ParseResponseText_RejectsResponseWithoutModelText()
+    public void ParseResponse_RejectsResponseWithoutModelText()
     {
         const string responseJson = """{"status":"completed","steps":[]}""";
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-            () => GeminiVisionProvider.ParseResponseText(responseJson));
+            () => GeminiVisionProvider.ParseResponse(responseJson).ResponseText);
 
         Assert.Equal("Gemini returned no usable response text.", exception.Message);
     }
@@ -164,7 +164,7 @@ public class GeminiVisionProviderTests
     }
 
     [Fact]
-    public void ParseResponseText_ReadsArrayWrappedResponse()
+    public void ParseResponse_ReadsArrayWrappedResponse()
     {
         const string responseJson = """
             [{
@@ -178,11 +178,11 @@ public class GeminiVisionProviderTests
             }]
             """;
 
-        Assert.Equal("A settings window.", GeminiVisionProvider.ParseResponseText(responseJson));
+        Assert.Equal("A settings window.", GeminiVisionProvider.ParseResponse(responseJson).ResponseText);
     }
 
     [Fact]
-    public void ParseResponseText_WhenUnparseable_ReportsRedactedPayload()
+    public void ParseResponse_WhenUnparseable_ReportsRedactedPayload()
     {
         const string apiKey = "test-secret-key-value";
         string encodedData = new('C', 120);
@@ -190,7 +190,7 @@ public class GeminiVisionProviderTests
             $"not json at all; api_key={apiKey}; at https://example.test/x; blob={encodedData}";
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-            () => GeminiVisionProvider.ParseResponseText(responseJson));
+            () => GeminiVisionProvider.ParseResponse(responseJson).ResponseText);
 
         Assert.Contains("could not parse", exception.Message);
         Assert.Contains("not json at all", exception.Message);
@@ -457,6 +457,51 @@ public class GeminiVisionProviderTests
     public void MaxHonoredRetryAfter_IsShortEnoughForAHotkeyPress()
     {
         Assert.True(GeminiVisionProvider.MaxHonoredRetryAfter <= TimeSpan.FromSeconds(15));
+    }
+
+    [Fact]
+    public void ParseResponse_CapturesModelAndTokenUsage()
+    {
+        // Field names taken from a real 200 response observed on 2026-10-08.
+        const string responseJson = """
+            {
+              "status": "completed",
+              "model": "gemini-3.8-flash",
+              "usage": {
+                "total_tokens": 1844,
+                "total_input_tokens": 1702,
+                "total_output_tokens": 74,
+                "total_thought_tokens": 68
+              },
+              "steps": [
+                { "type": "model_output", "content": [{ "type": "text", "text": "A toolbar." }] }
+              ]
+            }
+            """;
+
+        VisionResult result = GeminiVisionProvider.ParseResponse(responseJson);
+
+        Assert.Equal("A toolbar.", result.ResponseText);
+        Assert.Equal("gemini-3.8-flash", result.Model);
+        Assert.NotNull(result.Usage);
+        Assert.Equal(1844, result.Usage!.TotalTokens);
+        Assert.Equal(1702, result.Usage.InputTokens);
+        Assert.Equal(74, result.Usage.OutputTokens);
+        Assert.Equal(68, result.Usage.ThoughtTokens);
+        // Latency belongs to VisionService, not the provider.
+        Assert.Null(result.Latency);
+    }
+
+    [Fact]
+    public void ParseResponse_WhenMetadataIsAbsent_LeavesItNullRatherThanZero()
+    {
+        const string responseJson = """{"status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"Hi."}]}]}""";
+
+        VisionResult result = GeminiVisionProvider.ParseResponse(responseJson);
+
+        Assert.Equal("Hi.", result.ResponseText);
+        Assert.Null(result.Model);
+        Assert.Null(result.Usage);
     }
 
     private static VisionRequest CreateVisionRequest(byte[] pngBytes)

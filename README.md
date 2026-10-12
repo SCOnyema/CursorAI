@@ -11,7 +11,13 @@ V0.1 Cursor Companion and V0.2 Controls & State are complete. V0.3.3 now include
 - `GeminiVisionProvider`, currently selected for development and using `gemini-3.8-flash` through the Gemini Interactions API
 - `OpenAIVisionProvider`, retained for future selection and using `gpt-5.4-mini`
 
-There is no provider-selection UI or automatic fallback. The active provider remains an explicit one-line application composition choice.
+There is no provider-selection UI and no automatic fallback. The active provider is chosen at startup from `CURSORAI_VISION_PROVIDER`:
+
+```powershell
+$env:CURSORAI_VISION_PROVIDER = "openai"   # or "gemini" (the default)
+```
+
+Exactly one provider is constructed. An unrecognised value stops startup with an explanatory message rather than quietly defaulting, because a typo must never result in screenshots going to a different vendor than intended.
 
 ## Development shortcuts
 
@@ -19,7 +25,9 @@ There is no provider-selection UI or automatic fallback. The active provider rem
 - **Ctrl + Alt + Shift + S** performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
 - **Ctrl + Alt + Shift + V** explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
-The temporary vision question is: “What am I looking at, and what is under my cursor?” The returned text is currently written to the terminal used to launch CursorAI with `dotnet run`; no chat or response UI exists yet.
+The temporary vision question is: “What am I looking at, and what is under my cursor?” The returned text is currently written to the terminal used to launch CursorAI with `dotnet run`, together with the model, latency, and token counts the provider reported; no chat or response UI exists yet.
+
+While a request is in flight it owns the buddy's visual state: the idle/listening toggle is refused rather than cancelling the Thinking animation, and when the request ends the state that was current beforehand is restored.
 
 If another application already owns one of these shortcuts, CursorAI starts anyway and lists the unavailable ones on stderr; only losing all three is fatal. On the development machine **Ctrl + Alt + Space** is owned by another process, which previously crashed CursorAI at startup.
 

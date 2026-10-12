@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Media.Imaging;
 using CursorAI.App.Capture;
@@ -13,7 +14,7 @@ public sealed class VisionService
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     }
 
-    public Task<VisionResult> AnalyzeAsync(
+    public async Task<VisionResult> AnalyzeAsync(
         string userPrompt,
         CapturedFrame frame,
         CancellationToken cancellationToken = default)
@@ -34,7 +35,11 @@ public sealed class VisionService
             frame.CursorPositionInImage,
             frame.ForegroundWindow);
 
-        return _provider.AnalyzeAsync(request, cancellationToken);
+        // Latency is measured here, not in a provider, so it means the same thing for all of
+        // them: everything the user waits through after the frame is captured.
+        long startedAt = Stopwatch.GetTimestamp();
+        VisionResult result = await _provider.AnalyzeAsync(request, cancellationToken);
+        return result with { Latency = Stopwatch.GetElapsedTime(startedAt) };
     }
 
     private static byte[] EncodePng(CapturedFrame frame)

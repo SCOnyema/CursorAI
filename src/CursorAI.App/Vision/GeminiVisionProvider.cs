@@ -6,8 +6,10 @@ using System.Text.Json.Serialization;
 
 namespace CursorAI.App.Vision;
 
-public sealed class GeminiVisionProvider : IVisionProvider, IDisposable
+public sealed class GeminiVisionProvider : IVisionProvider
 {
+    public string Description => $"Google Gemini ({ResolveModel()}) via the Interactions API";
+
     /// <summary>
     /// Default vision model. Measured availability 2026-10-08 over 5 calls each:
     /// gemini-3.8-flash 4/5, gemini-3.7-flash 2/5, gemini-3.5-flash 5/5.
@@ -88,7 +90,7 @@ public sealed class GeminiVisionProvider : IVisionProvider, IDisposable
 
             if (response.IsSuccessStatusCode)
             {
-                return new VisionResult(ParseResponseText(responseJson));
+                return ParseResponse(responseJson);
             }
 
             TimeSpan retryDelay = TimeSpan.Zero;
@@ -192,7 +194,7 @@ public sealed class GeminiVisionProvider : IVisionProvider, IDisposable
             Store: false);
     }
 
-    internal static string ParseResponseText(string responseJson)
+    internal static VisionResult ParseResponse(string responseJson)
     {
         GeminiInteractionResponse? response;
 
@@ -225,7 +227,21 @@ public sealed class GeminiVisionProvider : IVisionProvider, IDisposable
             throw new InvalidOperationException("Gemini returned no usable response text.");
         }
 
-        return string.Join(Environment.NewLine, textParts);
+        return new VisionResult(
+            string.Join(Environment.NewLine, textParts),
+            response?.Model,
+            ToUsage(response?.Usage));
+    }
+
+    private static VisionUsage? ToUsage(GeminiInteractionUsage? usage)
+    {
+        return usage is null
+            ? null
+            : new VisionUsage(
+                usage.TotalTokens,
+                usage.TotalInputTokens,
+                usage.TotalOutputTokens,
+                usage.TotalThoughtTokens);
     }
 
     internal static byte[] SerializeInteractionRequest(GeminiInteractionRequest request)
@@ -365,7 +381,16 @@ internal sealed record GeminiInteractionInput(
 
 internal sealed record GeminiInteractionResponse(
     [property: JsonPropertyName("status")] string? Status,
-    [property: JsonPropertyName("steps")] IReadOnlyList<GeminiInteractionStep>? Steps);
+    [property: JsonPropertyName("steps")] IReadOnlyList<GeminiInteractionStep>? Steps,
+    [property: JsonPropertyName("model")] string? Model = null,
+    [property: JsonPropertyName("usage")] GeminiInteractionUsage? Usage = null);
+
+// Field names verified against a live 200 response on 2026-10-08.
+internal sealed record GeminiInteractionUsage(
+    [property: JsonPropertyName("total_tokens")] int? TotalTokens,
+    [property: JsonPropertyName("total_input_tokens")] int? TotalInputTokens,
+    [property: JsonPropertyName("total_output_tokens")] int? TotalOutputTokens,
+    [property: JsonPropertyName("total_thought_tokens")] int? TotalThoughtTokens);
 
 internal sealed record GeminiInteractionStep(
     [property: JsonPropertyName("type")] string? Type,

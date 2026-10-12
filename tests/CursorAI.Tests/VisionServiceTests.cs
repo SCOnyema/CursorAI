@@ -28,7 +28,10 @@ public class VisionServiceTests
 
         VisionResult result = await service.AnalyzeAsync("What is under my cursor?", frame, cancellation.Token);
 
-        Assert.Same(expectedResult, result);
+        // VisionService stamps latency, so the result is a copy of the provider's.
+        Assert.Equal(expectedResult.ResponseText, result.ResponseText);
+        Assert.NotNull(result.Latency);
+        Assert.True(result.Latency >= TimeSpan.Zero);
         Assert.NotNull(provider.Request);
         Assert.Equal("What is under my cursor?", provider.Request.UserPrompt);
         Assert.Equal("image/png", provider.Request.ImageMediaType);
@@ -89,8 +92,42 @@ public class VisionServiceTests
         return new CapturedFrame(image, capturedAt, monitor, cursorScreen, cursorInImage, foreground);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_StampsLatencyAndPreservesProviderMetadata()
+    {
+        VisionResult providerResult = new(
+            "Answer",
+            "gemini-3.8-flash",
+            new VisionUsage(1844, 1702, 74, 68));
+        RecordingVisionProvider provider = new(providerResult);
+        VisionService service = new(provider);
+
+        CapturedFrame frame = CreateFrame(
+            DateTimeOffset.UnixEpoch,
+            new CapturedMonitorInfo(
+                new PhysicalScreenBounds(0, 0, 1920, 1080),
+                new PhysicalScreenBounds(0, 0, 1920, 1040),
+                true),
+            new PhysicalScreenPoint(10, 10),
+            new PhysicalScreenPoint(10, 10),
+            new ForegroundWindowInfo(1, "t", "p"));
+
+        VisionResult result = await service.AnalyzeAsync("q", frame, CancellationToken.None);
+
+        Assert.Equal("Answer", result.ResponseText);
+        Assert.Equal("gemini-3.8-flash", result.Model);
+        Assert.Equal(1844, result.Usage!.TotalTokens);
+        Assert.NotNull(result.Latency);
+    }
+
     private sealed class RecordingVisionProvider(VisionResult result) : IVisionProvider
     {
+        public string Description => "recording test double";
+
+        public void Dispose()
+        {
+        }
+
         internal VisionRequest? Request { get; private set; }
 
         internal CancellationToken CancellationToken { get; private set; }

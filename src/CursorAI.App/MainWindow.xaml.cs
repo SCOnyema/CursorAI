@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _visionCancellationSource;
     private Storyboard? _activeStateStoryboard;
     private bool _cleanupComplete;
-    private bool _isVisionAnalysisRunning;
     private volatile bool _isShuttingDown;
 
     public MainWindow()
@@ -110,7 +109,12 @@ public partial class MainWindow : Window
         BuddyState nextState = _buddyStateManager.CurrentState == BuddyState.Idle
             ? BuddyState.Listening
             : BuddyState.Idle;
-        _buddyStateManager.SetState(nextState);
+
+        if (!_buddyStateManager.SetState(nextState))
+        {
+            Console.WriteLine(
+                "Idle/listening toggle ignored: a request is in flight and owns the buddy state.");
+        }
     }
 
     private async void HotkeyService_CaptureHotkeyPressed(object? sender, EventArgs e)
@@ -172,13 +176,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_isVisionAnalysisRunning)
+        // Ownership is taken before the capture so a second press during capture is rejected
+        // as well, and so the scope restores whatever state was current beforehand.
+        IDisposable? activity = _buddyStateManager.TryBeginActivity(BuddyState.Thinking);
+        if (activity is null)
         {
             Console.WriteLine("Vision analysis is already running; duplicate activation ignored.");
             return;
         }
 
-        _isVisionAnalysisRunning = true;
         CancellationTokenSource cancellationSource = new();
         _visionCancellationSource = cancellationSource;
         Stopwatch elapsed = Stopwatch.StartNew();
@@ -186,9 +192,8 @@ public partial class MainWindow : Window
         try
         {
             CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
-            _buddyStateManager.SetState(BuddyState.Thinking);
 
-            Console.WriteLine("Vision analysis started with Google Gemini.");
+            Console.WriteLine("Vision analysis started.");
             VisionResult result = await _visionService.AnalyzeAsync(
                 DevelopmentVisionQuestion,
                 frame,
@@ -197,7 +202,8 @@ public partial class MainWindow : Window
             if (!_isShuttingDown)
             {
                 Console.WriteLine($"Vision analysis completed in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-                Console.WriteLine("Gemini vision response:");
+                Console.WriteLine(DescribeResult(result));
+                Console.WriteLine("Vision response:");
                 Console.WriteLine(result.ResponseText);
             }
         }
@@ -229,13 +235,56 @@ public partial class MainWindow : Window
             }
 
             cancellationSource.Dispose();
-            _isVisionAnalysisRunning = false;
 
-            if (!_isShuttingDown)
+            // Restores the state that was current before this request, rather than assuming Idle.
+            activity.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Renders the metadata a provider reported. Absent values are omitted rather than shown as
+    /// zero, because providers differ in what they report and zero would be a different claim.
+    /// </summary>
+    private static string DescribeResult(VisionResult result)
+    {
+        List<string> parts = [];
+
+        if (!string.IsNullOrWhiteSpace(result.Model))
+        {
+            parts.Add($"model={result.Model}");
+        }
+
+        if (result.Latency is { } latency)
+        {
+            parts.Add($"latency={latency.TotalSeconds:F1}s");
+        }
+
+        if (result.Usage is { } usage)
+        {
+            if (usage.TotalTokens is { } total)
             {
-                _buddyStateManager.SetState(BuddyState.Idle);
+                parts.Add($"tokens={total}");
+            }
+
+            if (usage.InputTokens is { } input)
+            {
+                parts.Add($"in={input}");
+            }
+
+            if (usage.OutputTokens is { } output)
+            {
+                parts.Add($"out={output}");
+            }
+
+            if (usage.ThoughtTokens is { } thoughts)
+            {
+                parts.Add($"thinking={thoughts}");
             }
         }
+
+        return parts.Count == 0
+            ? "No provider metadata reported."
+            : string.Join("  ", parts);
     }
 
     private void BuddyStateManager_StateChanged(object? sender, BuddyStateChangedEventArgs e)
