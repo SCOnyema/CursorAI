@@ -8,7 +8,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.4 — Voice input/output: complete; local-only speech recognition and synthesis, verified end to end
 - V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
 - V0.6 — Windows UI Automation grounding: implemented; model targets snapped to real element bounds
-- V1.0 — First complete working version: planned
+- V1.0 — First complete working version: in progress; response panel and typed input implemented
 
 ## Vision Pipeline
 
@@ -64,6 +64,8 @@ UI Automation refines rather than replaces the model. `UiAutomationElementSource
 The guidance overlay is excluded from capture with `SetWindowDisplayAffinity`, exactly as the buddy is. Without that, highlights drawn for one question would be captured for the next and the model would describe its own guidance.
 
 A spoken turn runs recognition, capture, analysis, and playback inside one activity, advancing Listening to Thinking to Responding without releasing ownership. Speech never crosses the external trust boundary: both engines are on-device, so the audio path adds no network surface and spends no provider quota. Engine availability depends on machine state outside CursorAI's control, so a missing recogniser, microphone, or output device disables voice alone and is reported at startup rather than preventing the application from running.
+
+The response panel is the third window excluded from capture, alongside the buddy and the guidance overlay, and for the same reason: all three are layered because of `AllowsTransparency`, so `CAPTUREBLT` would otherwise fold CursorAI's own output into the next screenshot it takes. Unlike the other two it is deliberately not click-through, because it is typed into and scrolled. It reuses `BuddyPositioning` for placement so the panel and the buddy cannot disagree about how to handle screen edges.
 
 `BuddyStateManager` distinguishes two kinds of writer. Ambient changes, such as the idle/listening toggle, are cosmetic and may be refused. Activities, such as a vision request and later a voice turn, take exclusive ownership through `TryBeginActivity` and restore the prior state when their scope is disposed. Conflating the two was a defect: the activation hotkey used to flip state to Idle mid-request, killing the Thinking animation while the call was still running, and the request's own cleanup then forced Idle regardless of what the user had selected.
 

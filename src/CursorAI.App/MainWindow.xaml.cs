@@ -11,6 +11,7 @@ using CursorAI.App.Input;
 using CursorAI.App.Models;
 using CursorAI.App.Overlay;
 using CursorAI.App.Speech;
+using CursorAI.App.Ui;
 using CursorAI.App.State;
 using CursorAI.App.Vision;
 
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
     private readonly LocalSpeechServices _speechServices;
     private readonly GuidanceOverlayWindow _guidanceOverlay = new();
     private readonly IUiElementSource _uiElements = new UiAutomationElementSource();
+    private readonly ResponsePanelWindow _responsePanel = new();
     private HotkeyService? _hotkeyService;
     private CancellationTokenSource? _visionCancellationSource;
     private Storyboard? _activeStateStoryboard;
@@ -87,6 +89,8 @@ public partial class MainWindow : Window
             _hotkeyService.CaptureHotkeyPressed += HotkeyService_CaptureHotkeyPressed;
             _hotkeyService.VisionHotkeyPressed += HotkeyService_VisionHotkeyPressed;
             _hotkeyService.QuitHotkeyPressed += HotkeyService_QuitHotkeyPressed;
+            _hotkeyService.TypeHotkeyPressed += HotkeyService_TypeHotkeyPressed;
+            _responsePanel.QuestionSubmitted += ResponsePanel_QuestionSubmitted;
 
             if (_hotkeyService.UnavailableHotkeys.Count > 0)
             {
@@ -227,6 +231,7 @@ public partial class MainWindow : Window
                 Console.WriteLine(DescribeResult(result));
                 Console.WriteLine("Vision response:");
                 Console.WriteLine(result.ResponseText);
+                _responsePanel.ShowAnswer(result.ResponseText, DescribeResult(result));
                 ShowGuidance(activity, frame, result);
                 await SpeakResponseAsync(activity, result, cancellationSource.Token);
             }
@@ -238,18 +243,9 @@ public partial class MainWindow : Window
             Console.Error.WriteLine("Application cancellation requested: true");
             Debug.WriteLine("Vision analysis was canceled.");
         }
-        catch (InvalidOperationException exception)
-        {
-            Console.Error.WriteLine($"Vision analysis failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-            Console.Error.WriteLine(exception.Message);
-            Debug.WriteLine($"Vision analysis failed: {exception.GetType().Name}: {exception.Message}");
-        }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"Vision analysis failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-            Console.Error.WriteLine(
-                $"Failure type: {exception.GetType().Name}. Check network connectivity, API access, rate limits/quota, and configuration.");
-            Debug.WriteLine($"Vision analysis failed: {exception.GetType().Name}.");
+            ReportFailure("Vision analysis failed", exception, elapsed.Elapsed);
         }
         finally
         {
@@ -379,6 +375,102 @@ public partial class MainWindow : Window
     /// no taskbar entry or tray icon, so before this a running instance could only be ended
     /// through Task Manager - and a forgotten one locks the build output.
     /// </summary>
+    private void HotkeyService_TypeHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (!_isShuttingDown)
+        {
+            _responsePanel.ShowForTyping();
+        }
+    }
+
+    /// <summary>
+    /// Runs a typed question through exactly the same pipeline as a spoken one, so typing is a
+    /// different input rather than a different feature.
+    /// </summary>
+    private async void ResponsePanel_QuestionSubmitted(object? sender, string question)
+    {
+        if (_isShuttingDown || string.IsNullOrWhiteSpace(question))
+        {
+            return;
+        }
+
+        IBuddyActivity? activity = _buddyStateManager.TryBeginActivity(BuddyState.Thinking);
+        if (activity is null)
+        {
+            Console.WriteLine("Typed question ignored: a request is already in flight.");
+            return;
+        }
+
+        _guidanceOverlay.HideGuidance();
+        CancellationTokenSource cancellationSource = new();
+        _visionCancellationSource = cancellationSource;
+        Stopwatch elapsed = Stopwatch.StartNew();
+
+        try
+        {
+            Console.WriteLine($"Typed: {question}");
+            CapturedFrame frame = _screenCaptureService.CaptureMonitorContainingCursor();
+
+            VisionResult result = await _visionService.AnalyzeAsync(
+                question,
+                frame,
+                requestTargets: true,
+                cancellationSource.Token);
+
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            Console.WriteLine($"Typed question completed in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            Console.WriteLine(DescribeResult(result));
+            Console.WriteLine("Vision response:");
+            Console.WriteLine(result.ResponseText);
+            _responsePanel.ShowAnswer(result.ResponseText, DescribeResult(result));
+            ShowGuidance(activity, frame, result);
+            await SpeakResponseAsync(activity, result, cancellationSource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Typed question canceled.");
+        }
+        catch (Exception exception)
+        {
+            ReportFailure("Typed question failed", exception, elapsed.Elapsed);
+        }
+        finally
+        {
+            if (ReferenceEquals(_visionCancellationSource, cancellationSource))
+            {
+                _visionCancellationSource = null;
+            }
+
+            cancellationSource.Dispose();
+            activity.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reports a failure to the console and to the panel. Console-only reporting is invisible
+    /// unless CursorAI was launched from a terminal, which is how failures used to go unnoticed.
+    /// </summary>
+    private void ReportFailure(string what, Exception exception, TimeSpan elapsed)
+    {
+        string detail = exception is InvalidOperationException
+            ? exception.Message
+            : $"{exception.GetType().Name}. Check the microphone, network connectivity, API "
+              + "access, and rate limits or quota.";
+
+        Console.Error.WriteLine($"{what} after {elapsed.TotalSeconds:F1} seconds.");
+        Console.Error.WriteLine(detail);
+        Debug.WriteLine($"{what}: {exception}");
+
+        if (!_isShuttingDown)
+        {
+            _responsePanel.ShowFailure($"{what}.{Environment.NewLine}{Environment.NewLine}{detail}");
+        }
+    }
+
     private void HotkeyService_QuitHotkeyPressed(object? sender, EventArgs e)
     {
         if (_isShuttingDown)
@@ -417,6 +509,8 @@ public partial class MainWindow : Window
 
     private void ApplyBuddyState(BuddyState state)
     {
+        _responsePanel.SetStatus(state);
+
         ResetStateVisuals();
 
         switch (state)
@@ -527,6 +621,9 @@ public partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(question))
             {
                 Console.WriteLine("Nothing was recognised; voice turn abandoned.");
+                _responsePanel.ShowFailure(
+                    "I did not catch that." + Environment.NewLine + Environment.NewLine
+                    + "Try again, or type your question instead.");
                 return;
             }
 
@@ -552,6 +649,7 @@ public partial class MainWindow : Window
             Console.WriteLine(DescribeResult(result));
             Console.WriteLine("Vision response:");
             Console.WriteLine(result.ResponseText);
+            _responsePanel.ShowAnswer(result.ResponseText, DescribeResult(result));
 
             // Guidance first, so the highlight is on screen while the answer is read out.
             ShowGuidance(activity, frame, result);
@@ -561,18 +659,9 @@ public partial class MainWindow : Window
         {
             Console.Error.WriteLine($"Voice turn canceled after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
         }
-        catch (InvalidOperationException exception)
-        {
-            Console.Error.WriteLine($"Voice turn failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-            Console.Error.WriteLine(exception.Message);
-        }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"Voice turn failed after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-            Console.Error.WriteLine(
-                $"Failure type: {exception.GetType().Name}. Check the microphone, network "
-                + "connectivity, API access, and rate limits/quota.");
-            Debug.WriteLine($"Voice turn failed: {exception}");
+            ReportFailure("Voice turn failed", exception, elapsed.Elapsed);
         }
         finally
         {
@@ -628,6 +717,8 @@ public partial class MainWindow : Window
         _speechServices.Synthesizer?.Cancel();
         _guidanceOverlay.HideGuidance();
         _guidanceOverlay.Close();
+        _responsePanel.Dismiss();
+        _responsePanel.Close();
 
         Closed -= MainWindow_Closed;
         SourceInitialized -= MainWindow_SourceInitialized;
@@ -645,6 +736,8 @@ public partial class MainWindow : Window
         _hotkeyService.CaptureHotkeyPressed -= HotkeyService_CaptureHotkeyPressed;
         _hotkeyService.VisionHotkeyPressed -= HotkeyService_VisionHotkeyPressed;
         _hotkeyService.QuitHotkeyPressed -= HotkeyService_QuitHotkeyPressed;
+        _hotkeyService.TypeHotkeyPressed -= HotkeyService_TypeHotkeyPressed;
+        _responsePanel.QuestionSubmitted -= ResponsePanel_QuestionSubmitted;
 
         try
         {

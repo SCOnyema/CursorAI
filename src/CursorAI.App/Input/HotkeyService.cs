@@ -11,6 +11,7 @@ internal sealed class HotkeyService : IDisposable
     private const int CaptureHotkeyId = 0x4356;
     private const int VisionHotkeyId = 0x4357;
     private const int QuitHotkeyId = 0x4358;
+    private const int TypeHotkeyId = 0x4359;
 
     private readonly HwndSource _source;
     private readonly nint _windowHandle;
@@ -18,6 +19,7 @@ internal sealed class HotkeyService : IDisposable
     private bool _isCaptureRegistered;
     private bool _isVisionRegistered;
     private bool _isQuitRegistered;
+    private bool _isTypeRegistered;
     private bool _isDisposed;
     private bool _isHookInstalled;
 
@@ -61,10 +63,17 @@ internal sealed class HotkeyService : IDisposable
                 HotkeyConfiguration.QuitVariable,
                 unavailable);
 
+            _isTypeRegistered = Register(
+                TypeHotkeyId,
+                _configuration.Type,
+                "type a question",
+                HotkeyConfiguration.TypeVariable,
+                unavailable);
+
             UnavailableHotkeys = unavailable;
 
             if (!_isActivationRegistered && !_isCaptureRegistered && !_isVisionRegistered
-                && !_isQuitRegistered)
+                && !_isQuitRegistered && !_isTypeRegistered)
             {
                 throw new InvalidOperationException(
                     "None of the CursorAI hotkeys could be registered. Another application owns "
@@ -96,6 +105,8 @@ internal sealed class HotkeyService : IDisposable
 
     internal event EventHandler? QuitHotkeyPressed;
 
+    internal event EventHandler? TypeHotkeyPressed;
+
     public void Dispose()
     {
         if (_isDisposed)
@@ -107,6 +118,7 @@ internal sealed class HotkeyService : IDisposable
 
         List<string> failures = [];
         int firstError = 0;
+        TryUnregister(TypeHotkeyId, _configuration.Type.DisplayName, ref _isTypeRegistered, failures, ref firstError);
         TryUnregister(QuitHotkeyId, _configuration.Quit.DisplayName, ref _isQuitRegistered, failures, ref firstError);
         TryUnregister(VisionHotkeyId, _configuration.Vision.DisplayName, ref _isVisionRegistered, failures, ref firstError);
         TryUnregister(CaptureHotkeyId, _configuration.Capture.DisplayName, ref _isCaptureRegistered, failures, ref firstError);
@@ -122,6 +134,7 @@ internal sealed class HotkeyService : IDisposable
         CaptureHotkeyPressed = null;
         VisionHotkeyPressed = null;
         QuitHotkeyPressed = null;
+        TypeHotkeyPressed = null;
 
         if (failures.Count > 0)
         {
@@ -150,6 +163,7 @@ internal sealed class HotkeyService : IDisposable
 
     private void RollBackRegistrations()
     {
+        RollBackRegistration(TypeHotkeyId, _configuration.Type.DisplayName, ref _isTypeRegistered);
         RollBackRegistration(QuitHotkeyId, _configuration.Quit.DisplayName, ref _isQuitRegistered);
         RollBackRegistration(VisionHotkeyId, _configuration.Vision.DisplayName, ref _isVisionRegistered);
         RollBackRegistration(CaptureHotkeyId, _configuration.Capture.DisplayName, ref _isCaptureRegistered);
@@ -224,6 +238,11 @@ internal sealed class HotkeyService : IDisposable
         else if (wordParameter == QuitHotkeyId)
         {
             QuitHotkeyPressed?.Invoke(this, EventArgs.Empty);
+            handled = true;
+        }
+        else if (wordParameter == TypeHotkeyId)
+        {
+            TypeHotkeyPressed?.Invoke(this, EventArgs.Empty);
             handled = true;
         }
 

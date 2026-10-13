@@ -9,12 +9,14 @@ internal sealed record HotkeyConfiguration(
     HotkeyDefinition Activation,
     HotkeyDefinition Capture,
     HotkeyDefinition Vision,
-    HotkeyDefinition Quit)
+    HotkeyDefinition Quit,
+    HotkeyDefinition Type)
 {
     internal const string ActivationVariable = "CURSORAI_HOTKEY_ACTIVATE";
     internal const string CaptureVariable = "CURSORAI_HOTKEY_CAPTURE";
     internal const string VisionVariable = "CURSORAI_HOTKEY_VISION";
     internal const string QuitVariable = "CURSORAI_HOTKEY_QUIT";
+    internal const string TypeVariable = "CURSORAI_HOTKEY_TYPE";
 
     // Three keys on the home row rather than four-key chords, mnemonic (Ask / Screenshot /
     // Describe), and adjacent so each is one left-hand motion.
@@ -36,6 +38,9 @@ internal sealed record HotkeyConfiguration(
     // twice in two sessions before this existed.
     internal const string DefaultQuit = "Ctrl + Alt + Q";
 
+    // Typing is the fallback when dictation mishears, which it measurably does.
+    internal const string DefaultType = "Ctrl + Alt + T";
+
     internal static HotkeyConfiguration FromEnvironment()
     {
         return Resolve(Environment.GetEnvironmentVariable);
@@ -52,7 +57,8 @@ internal sealed record HotkeyConfiguration(
             ResolveOne(readVariable, ActivationVariable, DefaultActivation),
             ResolveOne(readVariable, CaptureVariable, DefaultCapture),
             ResolveOne(readVariable, VisionVariable, DefaultVision),
-            ResolveOne(readVariable, QuitVariable, DefaultQuit));
+            ResolveOne(readVariable, QuitVariable, DefaultQuit),
+            ResolveOne(readVariable, TypeVariable, DefaultType));
     }
 
     private static HotkeyDefinition ResolveOne(

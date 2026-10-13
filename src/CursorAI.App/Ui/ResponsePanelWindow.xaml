@@ -1,0 +1,90 @@
+<Window x:Class="CursorAI.App.Ui.ResponsePanelWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CursorAI"
+        Width="420"
+        SizeToContent="Height"
+        MaxHeight="520"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        WindowStartupLocation="Manual">
+    <Border Background="#F2252238"
+            BorderBrush="#6C63FF"
+            BorderThickness="1.5"
+            CornerRadius="10"
+            Padding="14,12,14,12">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- status -->
+            <Grid Grid.Row="0" Margin="0,0,0,8">
+                <TextBlock x:Name="StatusText"
+                           Text="Idle"
+                           Foreground="#35E7FF"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Left" />
+                <TextBlock Text="Esc to dismiss"
+                           Foreground="#7A7695"
+                           FontSize="10"
+                           HorizontalAlignment="Right" />
+            </Grid>
+
+            <!-- answer -->
+            <ScrollViewer Grid.Row="1"
+                          x:Name="BodyScroller"
+                          VerticalScrollBarVisibility="Auto"
+                          MaxHeight="330">
+                <TextBlock x:Name="BodyText"
+                           Text=""
+                           Foreground="White"
+                           FontSize="13"
+                           LineHeight="19"
+                           TextWrapping="Wrap" />
+            </ScrollViewer>
+
+            <!-- provider metadata -->
+            <TextBlock Grid.Row="2"
+                       x:Name="MetadataText"
+                       Text=""
+                       Foreground="#7A7695"
+                       FontSize="10"
+                       Margin="0,8,0,0"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed" />
+
+            <!-- ask box -->
+            <Border Grid.Row="3"
+                    Background="#1A1828"
+                    CornerRadius="6"
+                    Margin="0,10,0,0"
+                    Padding="8,5,8,5">
+                <Grid>
+                    <TextBlock x:Name="InputHint"
+                               Text="Type a question, or press the Ask shortcut to speak"
+                               Foreground="#5C5880"
+                               FontSize="12"
+                               IsHitTestVisible="False" />
+                    <TextBox x:Name="InputBox"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="White"
+                             CaretBrush="#6C63FF"
+                             FontSize="12"
+                             KeyDown="InputBox_KeyDown"
+                             TextChanged="InputBox_TextChanged" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

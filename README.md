@@ -2,7 +2,7 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.6 — UI Automation Grounding**
+Current status: **V1.0 — Working Without a Terminal**
 
 Technology stack: C#, .NET 10, WPF
 
@@ -23,6 +23,7 @@ Exactly one provider is constructed. An unrecognised value stops startup with an
 
 - **Ctrl + Alt + A** (*Ask*) starts a spoken turn: CursorAI listens, captures the monitor containing the cursor, asks the active vision provider your spoken question, then reads the answer aloud. Where speech recognition is unavailable it falls back to toggling the Idle and Listening states.
 - **Ctrl + Alt + S** (*Screenshot*) performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
+- **Ctrl + Alt + T** (*Type*) opens the response panel focused on its input box, so a question can be typed instead of spoken.
 - **Ctrl + Alt + Q** (*Quit*) shuts CursorAI down. The buddy is click-through with no taskbar entry, so this is the only way to stop it from the keyboard.
 - **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
@@ -31,6 +32,14 @@ When a provider locates the elements its answer refers to, CursorAI draws a high
 Where the focused application exposes its contents through Windows UI Automation, each highlight is snapped from the model's estimate onto the element's exact bounds. Coverage varies enormously by application: measured 2026-10-12, Notepad exposed 42 usable elements in about 200 ms, while an Electron window exposed only its three window-chrome buttons behind nameless panes spanning the whole window. Applications that expose nothing usable keep the model's own coordinates, which are typically within a couple of pixels, so guidance never regresses because of this step.
 
 Asking for coordinates roughly triples latency — measured 25.5s for a plain description against a real desktop versus 66s to 73s with element detection — which is why the request timeout is 120 seconds. It costs no extra requests: the answer and the coordinates arrive in the same call.
+
+## Response panel
+
+Answers, provider metadata, and failures appear in a panel beside the cursor, and the panel shows the current activity so a twenty-second request does not look like a hang. Press **Esc** to dismiss it.
+
+It also takes typed input. That exists because dictation measurably mishears: open recognition returned “what about Michael and so” for a question about Kotter’s change model. Typing avoids that without giving up on-device speech, which costs nothing and sends no audio anywhere. A typed question runs through exactly the same pipeline as a spoken one.
+
+Before this panel existed, everything went to the console, which only exists when CursorAI is launched from a terminal — so running the executable directly produced a cursor-following eye that reported nothing at all, including its own errors.
 
 The temporary vision question is: “What am I looking at, and what is under my cursor?” The returned text is currently written to the terminal used to launch CursorAI with `dotnet run`, together with the model, latency, and token counts the provider reported; no chat or response UI exists yet.
 
@@ -49,6 +58,7 @@ $env:CURSORAI_HOTKEY_ACTIVATE = "Ctrl + Alt + A"
 $env:CURSORAI_HOTKEY_CAPTURE  = "Ctrl + Alt + S"
 $env:CURSORAI_HOTKEY_VISION   = "Ctrl + Alt + D"
 $env:CURSORAI_HOTKEY_QUIT     = "Ctrl + Alt + Q"
+$env:CURSORAI_HOTKEY_TYPE     = "Ctrl + Alt + T"
 ```
 
 On keyboard layouts that use **AltGr** to type accented characters, AltGr is `Ctrl + Alt`, so these defaults can collide with ordinary typing. Override them if that applies to you.
