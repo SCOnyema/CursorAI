@@ -2,7 +2,7 @@
 
 CursorAI is a Windows-native AI desktop companion being built incrementally.
 
-Current status: **V0.5 — Visual Guidance Overlays**
+Current status: **V0.6 — UI Automation Grounding**
 
 Technology stack: C#, .NET 10, WPF
 
@@ -27,6 +27,8 @@ Exactly one provider is constructed. An unrecognised value stops startup with an
 - **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
 When a provider locates the elements its answer refers to, CursorAI draws a highlight and label over each one on the monitor that was captured, and the buddy switches to its Guiding state. The overlay clears when the next turn begins and otherwise dismisses itself after twelve seconds. It is excluded from screen capture for the same reason the buddy is: highlights drawn for one question must not appear in the screenshot for the next.
+
+Where the focused application exposes its contents through Windows UI Automation, each highlight is snapped from the model's estimate onto the element's exact bounds. Coverage varies enormously by application: measured 2026-10-12, Notepad exposed 42 usable elements in about 200 ms, while an Electron window exposed only its three window-chrome buttons behind nameless panes spanning the whole window. Applications that expose nothing usable keep the model's own coordinates, which are typically within a couple of pixels, so guidance never regresses because of this step.
 
 Asking for coordinates roughly triples latency — measured 25.5s for a plain description against a real desktop versus 66s to 73s with element detection — which is why the request timeout is 120 seconds. It costs no extra requests: the answer and the coordinates arrive in the same call.
 

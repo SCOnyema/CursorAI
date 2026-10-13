@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using CursorAI.App.Automation;
 using CursorAI.App.Capture;
 using CursorAI.App.Input;
 using CursorAI.App.Models;
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
     private readonly VisionService _visionService;
     private readonly LocalSpeechServices _speechServices;
     private readonly GuidanceOverlayWindow _guidanceOverlay = new();
+    private readonly IUiElementSource _uiElements = new UiAutomationElementSource();
     private HotkeyService? _hotkeyService;
     private CancellationTokenSource? _visionCancellationSource;
     private Storyboard? _activeStateStoryboard;
@@ -226,6 +228,7 @@ public partial class MainWindow : Window
                 Console.WriteLine("Vision response:");
                 Console.WriteLine(result.ResponseText);
                 ShowGuidance(activity, frame, result);
+                await SpeakResponseAsync(activity, result, cancellationSource.Token);
             }
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
@@ -277,9 +280,56 @@ public partial class MainWindow : Window
             return;
         }
 
-        Console.WriteLine($"Guidance targets: {string.Join(", ", targets.Select(t => t.Label))}");
-        _guidanceOverlay.ShowGuidance(frame.Monitor, targets, frame.PixelWidth, frame.PixelHeight);
+        // Refine the model's estimates with real element bounds where the application
+        // exposes them. Costs ~150ms against a ~66s request, and silently changes nothing on
+        // windows that report no usable elements.
+        IReadOnlyList<VisionTarget> refined = SnapToUiElements(frame, targets);
+
+        Console.WriteLine($"Guidance targets: {string.Join(", ", refined.Select(t => t.Label))}");
+        _guidanceOverlay.ShowGuidance(frame.Monitor, refined, frame.PixelWidth, frame.PixelHeight);
         activity.SetState(BuddyState.Guiding);
+    }
+
+    /// <summary>
+    /// Snaps targets to UI Automation element bounds, reporting what it managed to refine.
+    /// Any failure here falls back to the model's own coordinates rather than losing guidance.
+    /// </summary>
+    private IReadOnlyList<VisionTarget> SnapToUiElements(
+        CapturedFrame frame,
+        IReadOnlyList<VisionTarget> targets)
+    {
+        try
+        {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            IReadOnlyList<UiElement> elements = _uiElements.GetElements(frame.ForegroundWindow.WindowHandle);
+            IReadOnlyList<VisionTarget> refined = TargetSnapper.Snap(targets, elements, frame.Monitor.Bounds);
+
+            int changed = 0;
+            for (int i = 0; i < targets.Count && i < refined.Count; i++)
+            {
+                if (targets[i].Bounds != refined[i].Bounds)
+                {
+                    changed++;
+                }
+            }
+
+            Console.WriteLine(
+                $"UI Automation: {elements.Count} elements in {elapsed.ElapsedMilliseconds} ms, "
+                + $"{changed} of {targets.Count} targets snapped to exact bounds."
+                + (elements.Count == 0
+                    ? " This window exposes no usable elements, so model coordinates are used."
+                    : string.Empty));
+
+            return refined;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"UI Automation refinement skipped ({exception.GetType().Name}); "
+                + "using the model's coordinates.");
+            Debug.WriteLine($"UI Automation refinement failed: {exception}");
+            return targets;
+        }
     }
 
     private static string DescribeResult(VisionResult result)

@@ -7,7 +7,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.3 — Screen capture and vision: complete; verified end to end against the live provider
 - V0.4 — Voice input/output: complete; local-only speech recognition and synthesis, verified end to end
 - V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
-- V0.6 — Windows UI Automation grounding: planned
+- V0.6 — Windows UI Automation grounding: implemented; model targets snapped to real element bounds
 - V1.0 — First complete working version: planned
 
 ## Vision Pipeline
@@ -58,6 +58,8 @@ Captures run on the UI thread only as far as the BitBlt, which keeps the cursor 
 Transient Gemini failures (429, 500, 502, 503, 504) are retried up to three times with exponential backoff, and `Retry-After` is honoured: any wait longer than ten seconds fails immediately instead. That rule exists because the free tier allows only 20 requests per day per model and answers an exhausted quota with `Retry-After` hours ahead—retrying spent three requests to be refused three times. Retry applies to the same model only; this is not provider fallback, and no alternative model or provider is ever substituted automatically.
 
 Guidance coordinates come from the provider in screenshot pixels. Gemini reports boxes in its own normalised 0-1000 `box_2d` convention and `GeminiVisionProvider` converts them, so no vendor coordinate format reaches the provider-neutral layer. That convention is not a preference: measured against synthetic screens with known rectangles on 2026-10-12, requesting raw screenshot pixels produced a systematic vertical scaling error, mean IoU 0.24 with centres 29 to 54 pixels out, while the normalised convention gave mean IoU 0.91 to 0.99 with centres within 2 pixels. Three coordinate spaces meet in `OverlayGeometry` — screenshot pixels, physical screen pixels, and device-independent units — and it is kept pure because a single-display machine cannot exercise the multi-monitor paths.
+
+UI Automation refines rather than replaces the model. `UiAutomationElementSource` reads the foreground window through `AutomationElement.FromHandle`, using the handle capture already records; locating a window by enumerating the desktop's children took 1795 ms by comparison. `TargetSnapper` then matches each model box to the element with the greatest overlap and substitutes its exact bounds, keeping the model's own label because that is what the user heard in the answer. The overlap threshold matters: a nameless pane spanning an entire Electron window scores under 0.01 against a button-sized box and is correctly ignored, while a menu item scores 0.5 against a box drawn around just its label text and is correctly matched. Any window exposing nothing usable keeps the model's coordinates unchanged, so this step can only improve accuracy, never reduce it.
 
 The guidance overlay is excluded from capture with `SetWindowDisplayAffinity`, exactly as the buddy is. Without that, highlights drawn for one question would be captured for the next and the model would describe its own guidance.
 

@@ -48,6 +48,11 @@ internal static class VisionPromptBuilder
             Reply with ONLY a JSON object, no prose outside it and no code fence:
             {"answer":"<your answer in one or two sentences>","targets":[{"label":"<visible text>","box_2d":[ymin,xmin,ymax,xmax]}]}
             Every box_2d is normalised to 0-1000 over the image height and width, in that order.
-            Include a target for each element your answer refers to, and nothing else.
+
+            A target must be something the user could act on: a button, menu item, tab, link,
+            checkbox, text field or similar control. Box the control itself, not a caption
+            beside it. Do not return headings, paragraphs, labels or other passages of text,
+            and never return a target larger than roughly a quarter of the screen. If the
+            answer refers to no actionable control, return an empty targets array.
             """;
 }

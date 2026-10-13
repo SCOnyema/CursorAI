@@ -457,9 +457,59 @@ public class GeminiVisionProviderTests
     }
 
     [Fact]
-    public void MaxHonoredRetryAfter_IsShortEnoughForAHotkeyPress()
+    public void RetryCeilings_DistinguishCapacityWaitsFromQuotaWaits()
     {
-        Assert.True(GeminiVisionProvider.MaxHonoredRetryAfter <= TimeSpan.FromSeconds(15));
+        // A busy model is worth waiting out; an exhausted daily allowance is not. Observed
+        // 2026-10-12: a real 503 asked for 30s and a flat 10s ceiling threw the turn away,
+        // while an exhausted quota asked for over nine hours.
+        Assert.True(GeminiVisionProvider.MaxHonoredCapacityWait >= TimeSpan.FromSeconds(30));
+        Assert.True(GeminiVisionProvider.MaxHonoredCapacityWait <= TimeSpan.FromSeconds(60));
+        Assert.True(GeminiVisionProvider.MaxHonoredRateLimitWait <= TimeSpan.FromSeconds(15));
+        Assert.True(
+            GeminiVisionProvider.MaxHonoredRateLimitWait < GeminiVisionProvider.MaxHonoredCapacityWait);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_WaitsOutACapacity503ThatAsksForThirtySeconds()
+    {
+        // The exact case from the log: 503 with Retry-After: 30. Previously abandoned.
+        Environment.SetEnvironmentVariable("GEMINI_API_KEY", "stub-key");
+        StubHandler handler = new(
+            (HttpStatusCode.ServiceUnavailable, BusyBody),
+            (HttpStatusCode.OK, RecoveredBody))
+        {
+            RetryAfter = TimeSpan.FromSeconds(30)
+        };
+
+        using HttpClient client = new(handler);
+        GeminiVisionProvider provider = new(client);
+
+        // Confirms the decision to retry rather than the 30s wall-clock wait.
+        Task<VisionResult> pending = provider.AnalyzeAsync(
+            CreateVisionRequest([1, 2, 3]), CancellationToken.None);
+        Task finished = await Task.WhenAny(pending, Task.Delay(TimeSpan.FromSeconds(2)));
+
+        Assert.NotSame(pending, finished);
+        Assert.Equal(1, handler.CallCount);
+        Assert.False(pending.IsCompleted);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_StillRefusesAQuota429AskingForHours()
+    {
+        Environment.SetEnvironmentVariable("GEMINI_API_KEY", "stub-key");
+        StubHandler handler = new((HttpStatusCode.TooManyRequests, QuotaBody))
+        {
+            RetryAfter = TimeSpan.FromSeconds(33769)
+        };
+
+        using HttpClient client = new(handler);
+        GeminiVisionProvider provider = new(client);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => provider.AnalyzeAsync(CreateVisionRequest([1, 2, 3]), CancellationToken.None));
+
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
@@ -506,6 +556,15 @@ public class GeminiVisionProviderTests
         Assert.Null(result.Model);
         Assert.Null(result.Usage);
     }
+
+    private const string BusyBody =
+        """{"error":{"code":"service_unavailable","message":"busy"}}""";
+
+    private const string RecoveredBody =
+        """{"status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"Recovered."}]}]}""";
+
+    private const string QuotaBody =
+        """{"error":{"code":"too_many_requests","message":"Rate limit exceeded (limit: 20 requests per day on Free Tier)."}}""";
 
     private static VisionRequest CreateVisionRequest(byte[] pngBytes)
     {

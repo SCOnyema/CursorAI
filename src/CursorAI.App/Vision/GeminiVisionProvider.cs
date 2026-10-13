@@ -26,10 +26,18 @@ public sealed class GeminiVisionProvider : IVisionProvider
     internal const int MaxAttempts = 3;
 
     /// <summary>
-    /// Longest Retry-After CursorAI will wait out rather than failing immediately. A quota
-    /// reset hours away is not something a hotkey press should sit through.
+    /// Longest Retry-After to wait out when the model is merely busy. Observed 2026-10-12: a
+    /// real 503 asked for 30 seconds and a flat 10-second ceiling abandoned the request,
+    /// losing the user's whole turn for a wait that was worth taking.
     /// </summary>
-    internal static readonly TimeSpan MaxHonoredRetryAfter = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan MaxHonoredCapacityWait = TimeSpan.FromSeconds(45);
+
+    /// <summary>
+    /// Longest Retry-After to wait out when rate-limited. Kept short on purpose: an exhausted
+    /// free-tier daily allowance answers 429 with Retry-After over nine hours, and each retry
+    /// spends another of only twenty daily requests to be refused again.
+    /// </summary>
+    internal static readonly TimeSpan MaxHonoredRateLimitWait = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Per-request timeout, calibrated from measurement rather than guessed.
@@ -152,8 +160,15 @@ public sealed class GeminiVisionProvider : IVisionProvider
     {
         if (ReadRetryAfter(response) is { } requested)
         {
+            // A busy model and an exhausted allowance both answer with Retry-After, but they
+            // mean opposite things: one is worth waiting out, the other costs a request to be
+            // refused again. The status code is what separates them.
+            TimeSpan ceiling = response.StatusCode == HttpStatusCode.TooManyRequests
+                ? MaxHonoredRateLimitWait
+                : MaxHonoredCapacityWait;
+
             delay = requested > TimeSpan.Zero ? requested : TimeSpan.Zero;
-            return requested <= MaxHonoredRetryAfter;
+            return requested <= ceiling;
         }
 
         delay = RetryDelay(attempt);
