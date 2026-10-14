@@ -12,6 +12,17 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>cursorai.ico</ApplicationIcon>
 
+    <!--
+      WFO0003 asks for DPI to be configured through ApplicationHighDpiMode instead of the
+      manifest. Suppressed deliberately: the manifest declaration is load-bearing for the
+      capture path, which treats GetCursorPos, GetMonitorInfo and BitBlt output as true
+      physical pixels, and it is verified to produce PROCESS_PER_MONITOR_DPI_AWARE - including
+      in the published build after WinForms was added for the tray icon. ApplicationHighDpiMode
+      is a WinForms mechanism and WinForms here is one notification-area icon, so taking its
+      advice would trade a verified behaviour for an unverified one.
+    -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+
     <!-- Identity, so an installed build is not a nameless exe in Task Manager. -->
     <AssemblyTitle>CursorAI</AssemblyTitle>
     <Product>CursorAI</Product>
