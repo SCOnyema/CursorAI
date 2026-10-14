@@ -8,7 +8,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.4 — Voice input/output: complete; local-only speech recognition and synthesis, verified end to end
 - V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
 - V0.6 — Windows UI Automation grounding: implemented; model targets snapped to real element bounds
-- V1.0 — First complete working version: in progress; response panel and typed input implemented
+- V1.0 — First complete working version: in progress; response panel, typed input, packaging and settings implemented
 
 ## Vision Pipeline
 
@@ -71,4 +71,6 @@ The response panel is the third window excluded from capture, alongside the budd
 
 The development **Ctrl + Alt + S** path stops inside the local boundary and saves only local PNG/JSON artifacts. The **Ctrl + Alt + D** path, and a spoken turn started with **Ctrl + Alt + A**, cross the external boundary explicitly. There is no automatic or background capture and no automatic provider fallback.
 
-Secrets come from the process environment: `GEMINI_API_KEY` for the active Gemini provider and `OPENAI_API_KEY` if OpenAI is selected later. Credentials must never be hard-coded or committed. Screenshots, cursor/monitor context, foreground metadata, and the temporary question may be sensitive and must be transmitted only as an explicit, documented user action.
+Credentials resolve from the environment first and from stored user settings second. The ordering keeps an existing development workflow behaving exactly as before while making the application usable by someone who never opens a terminal; a value set in both places is not ambiguous, and the settings window names the fields the environment is controlling. Stored credentials are encrypted with DPAPI at `CurrentUser` scope under `%LOCALAPPDATA%\CursorAI`, never beside the executable, because an installed build may sit somewhere unwritable. A settings file copied from another machine or account cannot be decrypted, which degrades to no credential rather than to a crash.
+
+For development, secrets may still come from the process environment: `GEMINI_API_KEY` for the active Gemini provider and `OPENAI_API_KEY` if OpenAI is selected later. Credentials must never be hard-coded or committed. Screenshots, cursor/monitor context, foreground metadata, and the temporary question may be sensitive and must be transmitted only as an explicit, documented user action.

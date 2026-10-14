@@ -27,3 +27,6 @@ packages/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# publish output
+dist/

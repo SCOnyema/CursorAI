@@ -10,13 +10,15 @@ internal sealed record HotkeyConfiguration(
     HotkeyDefinition Capture,
     HotkeyDefinition Vision,
     HotkeyDefinition Quit,
-    HotkeyDefinition Type)
+    HotkeyDefinition Type,
+    HotkeyDefinition Settings)
 {
     internal const string ActivationVariable = "CURSORAI_HOTKEY_ACTIVATE";
     internal const string CaptureVariable = "CURSORAI_HOTKEY_CAPTURE";
     internal const string VisionVariable = "CURSORAI_HOTKEY_VISION";
     internal const string QuitVariable = "CURSORAI_HOTKEY_QUIT";
     internal const string TypeVariable = "CURSORAI_HOTKEY_TYPE";
+    internal const string SettingsVariable = "CURSORAI_HOTKEY_SETTINGS";
 
     // Three keys on the home row rather than four-key chords, mnemonic (Ask / Screenshot /
     // Describe), and adjacent so each is one left-hand motion.
@@ -41,6 +43,10 @@ internal sealed record HotkeyConfiguration(
     // Typing is the fallback when dictation mishears, which it measurably does.
     internal const string DefaultType = "Ctrl + Alt + T";
 
+    // Without a tray icon there is no other way to reach settings, and an installed build has
+    // no terminal in which to set environment variables.
+    internal const string DefaultSettings = "Ctrl + Alt + K";
+
     internal static HotkeyConfiguration FromEnvironment()
     {
         return Resolve(Environment.GetEnvironmentVariable);
@@ -58,7 +64,8 @@ internal sealed record HotkeyConfiguration(
             ResolveOne(readVariable, CaptureVariable, DefaultCapture),
             ResolveOne(readVariable, VisionVariable, DefaultVision),
             ResolveOne(readVariable, QuitVariable, DefaultQuit),
-            ResolveOne(readVariable, TypeVariable, DefaultType));
+            ResolveOne(readVariable, TypeVariable, DefaultType),
+            ResolveOne(readVariable, SettingsVariable, DefaultSettings));
     }
 
     private static HotkeyDefinition ResolveOne(

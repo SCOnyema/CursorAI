@@ -1,3 +1,5 @@
+using CursorAI.App.Configuration;
+
 namespace CursorAI.App.Vision;
 
 /// <summary>
@@ -13,7 +15,9 @@ internal static class VisionProviderFactory
 
     internal static IVisionProvider Create()
     {
-        return Create(Environment.GetEnvironmentVariable(ProviderEnvironmentVariable));
+        return Create(AppConfiguration.Resolve(
+            ProviderEnvironmentVariable,
+            static settings => settings.Provider));
     }
 
     internal static IVisionProvider Create(string? providerName)

@@ -1,3 +1,4 @@
+using CursorAI.App.Configuration;
 using OpenAI.Responses;
 
 namespace CursorAI.App.Vision;
@@ -58,11 +59,15 @@ public sealed class OpenAIVisionProvider : IVisionProvider
             return _client;
         }
 
-        string? apiKey = Environment.GetEnvironmentVariable(ApiKeyEnvironmentVariable);
+        string? apiKey = AppConfiguration.Resolve(
+            ApiKeyEnvironmentVariable,
+            static settings => settings.OpenAiApiKey);
+
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException(
-                $"{ApiKeyEnvironmentVariable} is not configured. Set it before starting CursorAI to use vision analysis.");
+                "No OpenAI API key is configured. Open CursorAI settings to paste one, or set "
+                + $"{ApiKeyEnvironmentVariable} before starting.");
         }
 
         _client = new ResponsesClient(apiKey);

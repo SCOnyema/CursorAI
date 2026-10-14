@@ -7,6 +7,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CursorAI.App.Automation;
 using CursorAI.App.Capture;
+using CursorAI.App.Configuration;
 using CursorAI.App.Input;
 using CursorAI.App.Models;
 using CursorAI.App.Overlay;
@@ -40,6 +41,7 @@ public partial class MainWindow : Window
     private Storyboard? _activeStateStoryboard;
     private bool _cleanupComplete;
     private volatile bool _isShuttingDown;
+    private bool _isSettingsOpen;
 
     public MainWindow()
     {
@@ -90,6 +92,7 @@ public partial class MainWindow : Window
             _hotkeyService.VisionHotkeyPressed += HotkeyService_VisionHotkeyPressed;
             _hotkeyService.QuitHotkeyPressed += HotkeyService_QuitHotkeyPressed;
             _hotkeyService.TypeHotkeyPressed += HotkeyService_TypeHotkeyPressed;
+            _hotkeyService.SettingsHotkeyPressed += HotkeyService_SettingsHotkeyPressed;
             _responsePanel.QuestionSubmitted += ResponsePanel_QuestionSubmitted;
 
             if (_hotkeyService.UnavailableHotkeys.Count > 0)
@@ -106,6 +109,8 @@ public partial class MainWindow : Window
             ApplyBuddyState(_buddyStateManager.CurrentState);
             UpdateBuddyPosition();
             _cursorTrackingTimer.Start();
+
+            PromptForCredentialsIfMissing();
         }
         catch
         {
@@ -375,6 +380,64 @@ public partial class MainWindow : Window
     /// no taskbar entry or tray icon, so before this a running instance could only be ended
     /// through Task Manager - and a forgotten one locks the build output.
     /// </summary>
+    private void HotkeyService_SettingsHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (!_isShuttingDown)
+        {
+            ShowSettings();
+        }
+    }
+
+    /// <summary>
+    /// Opens settings modally. One at a time, because two windows editing the same stored file
+    /// would have the last save win silently.
+    /// </summary>
+    private void ShowSettings()
+    {
+        if (_isSettingsOpen)
+        {
+            return;
+        }
+
+        _isSettingsOpen = true;
+        try
+        {
+            SettingsWindow settings = new() { Owner = null };
+            settings.ShowDialog();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Could not open settings: {exception.GetType().Name}: {exception.Message}");
+            Debug.WriteLine($"Settings window failed: {exception}");
+        }
+        finally
+        {
+            _isSettingsOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// On a first run with no credential anywhere, says so and opens settings. Otherwise the
+    /// first thing a new user would see is an authentication failure they cannot act on.
+    /// </summary>
+    private void PromptForCredentialsIfMissing()
+    {
+        bool hasEnvironmentKey = AppConfiguration.IsOverriddenByEnvironment("GEMINI_API_KEY")
+            || AppConfiguration.IsOverriddenByEnvironment("OPENAI_API_KEY");
+
+        if (hasEnvironmentKey || AppConfiguration.Settings.HasAnyCredential)
+        {
+            return;
+        }
+
+        Console.WriteLine("No API key is configured yet; opening settings.");
+        _responsePanel.ShowFailure(
+            "No API key is configured yet." + Environment.NewLine + Environment.NewLine
+            + "Paste one into the settings window that just opened. A free Gemini key can be "
+            + "created at aistudio.google.com/apikey.");
+        ShowSettings();
+    }
+
     private void HotkeyService_TypeHotkeyPressed(object? sender, EventArgs e)
     {
         if (!_isShuttingDown)
@@ -737,6 +800,7 @@ public partial class MainWindow : Window
         _hotkeyService.VisionHotkeyPressed -= HotkeyService_VisionHotkeyPressed;
         _hotkeyService.QuitHotkeyPressed -= HotkeyService_QuitHotkeyPressed;
         _hotkeyService.TypeHotkeyPressed -= HotkeyService_TypeHotkeyPressed;
+        _hotkeyService.SettingsHotkeyPressed -= HotkeyService_SettingsHotkeyPressed;
         _responsePanel.QuestionSubmitted -= ResponsePanel_QuestionSubmitted;
 
         try

@@ -19,11 +19,28 @@ $env:CURSORAI_VISION_PROVIDER = "openai"   # or "gemini" (the default)
 
 Exactly one provider is constructed. An unrecognised value stops startup with an explanatory message rather than quietly defaulting, because a typo must never result in screenshots going to a different vendor than intended.
 
+## Installing
+
+CursorAI publishes as a single self-contained executable, so no .NET runtime install is needed:
+
+```powershell
+dotnet publish .\src\CursorAI.App\CursorAI.App.csproj -c Release -p:PublishProfileActive=true -o .\dist
+```
+
+That produces one file of roughly 65 MB at `.\dist\CursorAI.App.exe`. Copy it anywhere and run it. The build is unsigned, so Windows SmartScreen will warn on first launch.
+
+On first run, with no key configured, CursorAI opens its settings window and says so in the response panel. Paste a Gemini API key there; a free one can be created at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Press **Ctrl + Alt + K** to reopen settings at any time.
+
+Keys are encrypted with DPAPI for your Windows account and stored in `%LOCALAPPDATA%\CursorAI\settings.json`. The plaintext key never touches disk. That is better than a plain configuration file and is not a secret vault: anything running as your Windows account can decrypt it, which is unavoidable for a desktop application that has to use the key itself.
+
+Environment variables still take precedence over anything saved in settings, so an existing development workflow is unaffected. The settings window names any field the environment is currently controlling rather than appearing to accept a value that will not take effect.
+
 ## Development shortcuts
 
 - **Ctrl + Alt + A** (*Ask*) starts a spoken turn: CursorAI listens, captures the monitor containing the cursor, asks the active vision provider your spoken question, then reads the answer aloud. Where speech recognition is unavailable it falls back to toggling the Idle and Listening states.
 - **Ctrl + Alt + S** (*Screenshot*) performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
 - **Ctrl + Alt + T** (*Type*) opens the response panel focused on its input box, so a question can be typed instead of spoken.
+- **Ctrl + Alt + K** (*Keys*) opens settings, where API keys, the provider, and the model can be set without a terminal.
 - **Ctrl + Alt + Q** (*Quit*) shuts CursorAI down. The buddy is click-through with no taskbar entry, so this is the only way to stop it from the keyboard.
 - **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
@@ -59,6 +76,7 @@ $env:CURSORAI_HOTKEY_CAPTURE  = "Ctrl + Alt + S"
 $env:CURSORAI_HOTKEY_VISION   = "Ctrl + Alt + D"
 $env:CURSORAI_HOTKEY_QUIT     = "Ctrl + Alt + Q"
 $env:CURSORAI_HOTKEY_TYPE     = "Ctrl + Alt + T"
+$env:CURSORAI_HOTKEY_SETTINGS = "Ctrl + Alt + K"
 ```
 
 On keyboard layouts that use **AltGr** to type accented characters, AltGr is `Ctrl + Alt`, so these defaults can collide with ordinary typing. Override them if that applies to you.
@@ -75,7 +93,7 @@ Voice depends on machine state CursorAI does not control: an installed speech re
 
 ## API keys
 
-The active Gemini provider requires `GEMINI_API_KEY`. Set it for the current PowerShell process/session before launching CursorAI:
+Keys are normally set in the settings window described above. For development they can also come from the environment, which takes precedence:
 
 ```powershell
 $env:GEMINI_API_KEY = "<your-api-key>"

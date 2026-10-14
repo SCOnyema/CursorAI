@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CursorAI.App.Configuration;
 
 namespace CursorAI.App.Vision;
 
@@ -379,17 +380,23 @@ public sealed class GeminiVisionProvider : IVisionProvider
     /// </summary>
     internal static string ResolveModel()
     {
-        string? configured = System.Environment.GetEnvironmentVariable(ModelEnvironmentVariable);
+        string? configured = AppConfiguration.Resolve(
+            ModelEnvironmentVariable,
+            static settings => settings.GeminiModel);
         return string.IsNullOrWhiteSpace(configured) ? DefaultModel : configured.Trim();
     }
 
     private static string GetApiKey()
     {
-        string? apiKey = System.Environment.GetEnvironmentVariable(ApiKeyEnvironmentVariable);
+        string? apiKey = AppConfiguration.Resolve(
+            ApiKeyEnvironmentVariable,
+            static settings => settings.GeminiApiKey);
+
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException(
-                $"{ApiKeyEnvironmentVariable} is not configured. Set it before starting CursorAI to use vision analysis.");
+                "No Gemini API key is configured. Open CursorAI settings to paste one, or set "
+                + $"{ApiKeyEnvironmentVariable} before starting.");
         }
 
         return apiKey;

@@ -14,6 +14,17 @@ public class HotkeyConfigurationTests
         Assert.Equal("Ctrl + Alt + D", configuration.Vision.DisplayName);
         Assert.Equal("Ctrl + Alt + Q", configuration.Quit.DisplayName);
         Assert.Equal("Ctrl + Alt + T", configuration.Type.DisplayName);
+        Assert.Equal("Ctrl + Alt + K", configuration.Settings.DisplayName);
+    }
+
+    [Fact]
+    public void Resolve_ResolvesTheSettingsShortcutIndependently()
+    {
+        HotkeyConfiguration configuration = HotkeyConfiguration.Resolve(name =>
+            name == HotkeyConfiguration.SettingsVariable ? "Ctrl + Shift + F2" : null);
+
+        Assert.Equal("Ctrl + Shift + F2", configuration.Settings.DisplayName);
+        Assert.Equal("Ctrl + Alt + A", configuration.Activation.DisplayName);
     }
 
     [Fact]
@@ -44,7 +55,7 @@ public class HotkeyConfigurationTests
         string[] names =
         [
             c.Activation.DisplayName, c.Capture.DisplayName, c.Vision.DisplayName,
-            c.Quit.DisplayName, c.Type.DisplayName
+            c.Quit.DisplayName, c.Type.DisplayName, c.Settings.DisplayName
         ];
 
         Assert.Equal(names.Length, names.Distinct().Count());
@@ -59,7 +70,7 @@ public class HotkeyConfigurationTests
             new[]
             {
                 configuration.Activation, configuration.Capture, configuration.Vision,
-                configuration.Quit, configuration.Type
+                configuration.Quit, configuration.Type, configuration.Settings
             })
         {
             Assert.DoesNotContain("Shift", hotkey.DisplayName);
