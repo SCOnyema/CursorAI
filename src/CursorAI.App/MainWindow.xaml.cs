@@ -25,8 +25,11 @@ public partial class MainWindow : Window
     private const string DevelopmentVisionQuestion = "What am I looking at, and what is under my cursor?";
     private static readonly TimeSpan TrackingInterval = TimeSpan.FromMilliseconds(16);
 
-    /// <summary>How long to wait for speech to begin before abandoning a voice turn.</summary>
-    private static readonly TimeSpan VoiceListenTimeout = TimeSpan.FromSeconds(8);
+    /// <summary>
+    /// Longest a single utterance may run. With push-to-talk this is a ceiling on holding the
+    /// key rather than a silence timeout, so it is longer than the legacy engine needed.
+    /// </summary>
+    private static readonly TimeSpan VoiceListenTimeout = TimeSpan.FromSeconds(20);
 
     private readonly BuddyStateManager _buddyStateManager;
     private readonly DispatcherTimer _cursorTrackingTimer;
@@ -676,9 +679,15 @@ public partial class MainWindow : Window
 
         try
         {
-            Console.WriteLine("Listening...");
+            // Push-to-talk: record while the Ask shortcut's key is still physically held.
+            // RegisterHotKey reports the press but never the release, so the release has to be
+            // polled. Whisper cannot stream, so it needs an explicit end to the utterance.
+            uint talkKey = HotkeyConfiguration.FromEnvironment().Activation.VirtualKey;
+            Console.WriteLine("Listening... (hold the Ask shortcut while speaking)");
+
             string? question = await _speechServices.Recognizer!.RecognizeOnceAsync(
                 VoiceListenTimeout,
+                () => NativeMethods.IsKeyDown(talkKey),
                 cancellationSource.Token);
 
             if (string.IsNullOrWhiteSpace(question))

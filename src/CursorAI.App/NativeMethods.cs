@@ -37,6 +37,18 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool UnregisterHotKey(nint windowHandle, int id);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+
+    /// <summary>
+    /// True while the given virtual key is physically held. RegisterHotKey reports presses but
+    /// never releases, so push-to-talk has to poll for the release itself.
+    /// </summary>
+    internal static bool IsKeyDown(uint virtualKey)
+    {
+        return (GetAsyncKeyState((int)virtualKey) & 0x8000) != 0;
+    }
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", ExactSpelling = true, SetLastError = true)]
     private static extern nint GetWindowLongPtr(nint windowHandle, int index);
 

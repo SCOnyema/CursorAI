@@ -85,9 +85,24 @@ Accepted forms are any combination of `Ctrl`, `Alt`, `Shift`, and `Win` plus one
 
 ## Voice
 
-Speech recognition and synthesis both run **entirely on this machine** through the Windows speech engines. Microphone audio never leaves the computer, so voice stays inside the local trust boundary and consumes none of the vision provider's request quota. Only the screenshot and the recognised question cross the boundary, exactly as the **V** shortcut already does.
+Speech recognition uses **Whisper** running locally, through the whisper.cpp binding. Synthesis uses the Windows speech engine. Both run **entirely on this machine**. Microphone audio never leaves the computer, so voice stays inside the local trust boundary and consumes none of the vision provider's request quota. Only the screenshot and the recognised question cross the boundary, exactly as the **V** shortcut already does.
 
-A spoken turn waits up to eight seconds for speech to begin, then abandons the attempt rather than holding the microphone open. The spoken reply has markdown stripped first, since a synthesiser otherwise reads `**Export PDF**` as “star star Export PDF star star”, and is shortened to roughly 600 characters at a sentence boundary.
+Voice input is **push-to-talk**: hold **Ctrl + Alt + A** while speaking and release to transcribe. Whisper cannot stream, so the utterance needs an explicit end; this also removes the old engine's voice activity detection, which truncated sentences mid-way. A single utterance is capped at twenty seconds.
+
+### Whisper models
+
+Models are read from `%LOCALAPPDATA%\CursorAI\models` and **nothing is ever downloaded automatically** — these files are hundreds of megabytes, which is not a decision software should make behind a hotkey press. With no model present CursorAI falls back to the legacy Windows recognizer and prints exactly which file to fetch and where to put it.
+
+```powershell
+mkdir $env:LOCALAPPDATA\CursorAI\models
+curl -L -o $env:LOCALAPPDATA\CursorAI\models\ggml-small.en.bin `
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+$env:CURSORAI_WHISPER_MODEL = "base.en"   # optional; default is small.en
+```
+
+Sizes verified by HTTP HEAD on 2026-10-14: `tiny.en` 74 MB, `base.en` 141 MB, `small.en` 465 MB, `medium.en` 1463 MB.
+
+Transcription of a 5.7-second utterance, measured on the development machine: `base.en` 2.9s warm, `small.en` 8.4s warm. Both transcribed the synthesized test phrase perfectly, so that measurement says nothing about their relative accuracy on real speech with background noise and an accent — which is where the larger model is expected to earn its size. `small.en` is the default for that reason; set `CURSORAI_WHISPER_MODEL=base.en` to trade accuracy for roughly three times the speed. The spoken reply has markdown stripped first, since a synthesiser otherwise reads `**Export PDF**` as “star star Export PDF star star”, and is shortened to roughly 600 characters at a sentence boundary.
 
 Voice depends on machine state CursorAI does not control: an installed speech recognition language, a microphone, an output device. Any of those missing is reported at startup and disables only voice; vision by hotkey keeps working.
 
@@ -128,6 +143,6 @@ These assignments affect only the current PowerShell process/session and child p
 
 The buddy window is excluded from screen capture via `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`. Before this, the window—layered because of `AllowsTransparency`—was pulled into CursorAI's own screenshots by `CAPTUREBLT`, covering an 80x80 pixel region at cursor+(20,20) and occluding the very thing the cursor pointed at.
 
-Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised text of your question; the audio itself never leaves the machine, because recognition runs on-device. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
+Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press, a typed question, or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised *text* of your question. **The audio never leaves the machine**: recording is held in memory, transcribed locally by Whisper, and discarded. No cloud speech service is used, and recorded audio is never written to disk. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
 
 Developers using Gemini’s free tier should avoid testing with sensitive or private screens and review Google’s current Gemini API data-use terms before submitting real sensitive information.

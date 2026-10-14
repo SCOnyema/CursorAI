@@ -23,7 +23,14 @@ public sealed class WindowsSpeechRecognizer : ISpeechRecognizer
 
     public string Description { get; }
 
-    public async Task<string?> RecognizeOnceAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    /// <summary>
+    /// The legacy engine has its own voice activity detection, so the push-to-talk signal is
+    /// not applicable and is ignored.
+    /// </summary>
+    public async Task<string?> RecognizeOnceAsync(
+        TimeSpan timeout,
+        Func<bool>? keepRecording,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         cancellationToken.ThrowIfCancellationRequested();

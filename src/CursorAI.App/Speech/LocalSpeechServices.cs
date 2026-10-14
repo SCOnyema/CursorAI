@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO;
+using CursorAI.App.Configuration;
 
 namespace CursorAI.App.Speech;
 
@@ -41,12 +43,43 @@ public sealed class LocalSpeechServices : IDisposable
     public static LocalSpeechServices Create()
     {
         List<string> unavailable = [];
-        ISpeechRecognizer? recognizer = TryCreate(
-            static () => new WindowsSpeechRecognizer(), "Speech recognition", unavailable);
+        ISpeechRecognizer? recognizer = CreateRecognizer(unavailable);
         ISpeechSynthesizer? synthesizer = TryCreate(
             static () => new WindowsSpeechSynthesizer(), "Speech synthesis", unavailable);
 
         return new LocalSpeechServices(recognizer, synthesizer, unavailable);
+    }
+
+    /// <summary>
+    /// Prefers Whisper and falls back to the legacy Windows recognizer.
+    /// </summary>
+    /// <remarks>
+    /// The fallback is not a nicety. A Whisper model is hundreds of megabytes and is never
+    /// downloaded automatically, so a fresh install has no model: without this, voice input
+    /// would simply be dead until someone fetched one. The legacy engine mishears badly but it
+    /// is present on every Windows machine, so it is a usable floor rather than a silence.
+    /// </remarks>
+    private static ISpeechRecognizer? CreateRecognizer(List<string> unavailable)
+    {
+        string configured = WhisperModelLocator.ResolveModelName(
+            AppConfiguration.Resolve(
+                WhisperModelLocator.ModelEnvironmentVariable,
+                static _ => null));
+        string modelPath = WhisperModelLocator.ResolveModelPath(
+            configured, WhisperModelLocator.ModelDirectory);
+
+        if (!File.Exists(modelPath))
+        {
+            unavailable.Add(WhisperModelLocator.DescribeMissingModel(modelPath));
+            return TryCreate(
+                static () => new WindowsSpeechRecognizer(), "Speech recognition", unavailable);
+        }
+
+        ISpeechRecognizer? whisper = TryCreate(
+            () => new WhisperSpeechRecognizer(modelPath), "Whisper recognition", unavailable);
+
+        return whisper ?? TryCreate(
+            static () => new WindowsSpeechRecognizer(), "Speech recognition", unavailable);
     }
 
     private static T? TryCreate<T>(Func<T> create, string role, List<string> unavailable)

@@ -14,5 +14,14 @@ public interface ISpeechRecognizer : IDisposable
     /// Listens for a single utterance and returns what was heard, or null when nothing
     /// intelligible was said before <paramref name="timeout"/> elapsed.
     /// </summary>
-    Task<string?> RecognizeOnceAsync(TimeSpan timeout, CancellationToken cancellationToken);
+    /// <param name="keepRecording">
+    /// Push-to-talk signal, polled while capturing: recording continues while it returns true.
+    /// Whisper cannot stream, so it needs an explicit end to the utterance rather than voice
+    /// activity detection. Engines with their own end-of-speech detection ignore this, and a
+    /// null predicate means "let the engine decide", which for Whisper means the full timeout.
+    /// </param>
+    Task<string?> RecognizeOnceAsync(
+        TimeSpan timeout,
+        Func<bool>? keepRecording,
+        CancellationToken cancellationToken);
 }

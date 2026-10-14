@@ -5,7 +5,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.1 — Cursor companion: complete
 - V0.2 — Global controls and application state: complete
 - V0.3 — Screen capture and vision: complete; verified end to end against the live provider
-- V0.4 — Voice input/output: complete; local-only speech recognition and synthesis, verified end to end
+- V0.4 — Voice input/output: complete; local Whisper recognition and local synthesis, verified end to end
 - V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
 - V0.6 — Windows UI Automation grounding: implemented; model targets snapped to real element bounds
 - V1.0 — First complete working version: in progress; response panel, typed input, packaging and settings implemented
@@ -62,6 +62,10 @@ Guidance coordinates come from the provider in screenshot pixels. Gemini reports
 UI Automation refines rather than replaces the model. `UiAutomationElementSource` reads the foreground window through `AutomationElement.FromHandle`, using the handle capture already records; locating a window by enumerating the desktop's children took 1795 ms by comparison. `TargetSnapper` then matches each model box to the element with the greatest overlap and substitutes its exact bounds, keeping the model's own label because that is what the user heard in the answer. The overlap threshold matters: a nameless pane spanning an entire Electron window scores under 0.01 against a button-sized box and is correctly ignored, while a menu item scores 0.5 against a box drawn around just its label text and is correctly matched. Any window exposing nothing usable keeps the model's coordinates unchanged, so this step can only improve accuracy, never reduce it.
 
 The guidance overlay is excluded from capture with `SetWindowDisplayAffinity`, exactly as the buddy is. Without that, highlights drawn for one question would be captured for the next and the model would describe its own guidance.
+
+Speech recognition runs locally through Whisper (Whisper.net and Whisper.net.Runtime, both MIT, verified from package metadata). Whisper cannot stream, so the contract gained a push-to-talk predicate: `RegisterHotKey` reports presses but never releases, so the release is polled with `GetAsyncKeyState` and the utterance ends when the key comes up. Audio is captured at 16 kHz mono 16-bit PCM, which is exactly what the model consumes, held in memory, and discarded after transcription; it is never written to disk and never leaves the machine.
+
+Models are read from `%LOCALAPPDATA%\CursorAI\models` and are never downloaded automatically. A missing model degrades to the legacy Windows recognizer with instructions naming the file, the folder and the command, because a fresh install has no model and voice input would otherwise simply be dead. The legacy engine mishears badly but exists on every Windows machine, which makes it a floor rather than a silence.
 
 A spoken turn runs recognition, capture, analysis, and playback inside one activity, advancing Listening to Thinking to Responding without releasing ownership. Speech never crosses the external trust boundary: both engines are on-device, so the audio path adds no network surface and spends no provider quota. Engine availability depends on machine state outside CursorAI's control, so a missing recogniser, microphone, or output device disables voice alone and is reported at startup rather than preventing the application from running.
 
