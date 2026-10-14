@@ -557,6 +557,44 @@ public class GeminiVisionProviderTests
         Assert.Null(result.Usage);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_WhenCancelled_StopsPromptlyRatherThanWaitingOut()
+    {
+        // A request can take over a minute on a throttled free tier, so cancelling must not
+        // wait for the provider. This exercises the same token the panel's Cancel feeds.
+        Environment.SetEnvironmentVariable("GEMINI_API_KEY", "stub-key");
+        SlowHandler handler = new(TimeSpan.FromMinutes(2));
+
+        using HttpClient client = new(handler);
+        GeminiVisionProvider provider = new(client);
+        using CancellationTokenSource cts = new();
+
+        Task<VisionResult> pending = provider.AnalyzeAsync(CreateVisionRequest([1, 2, 3]), cts.Token);
+        await handler.Started.Task;
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        sw.Stop();
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"took {sw.Elapsed.TotalSeconds:F1}s");
+    }
+
+    /// <summary>Hangs until cancelled, standing in for a provider that is being slow.</summary>
+    private sealed class SlowHandler(TimeSpan delay) : HttpMessageHandler
+    {
+        internal TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            await Task.Delay(delay, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
     private const string BusyBody =
         """{"error":{"code":"service_unavailable","message":"busy"}}""";
 

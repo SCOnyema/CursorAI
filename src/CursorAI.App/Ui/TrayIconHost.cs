@@ -38,6 +38,8 @@ internal sealed class TrayIconHost : IDisposable
         Add(actions.Describe, "Describe this screen", hotkeys.Vision.DisplayName);
         Add(actions.Capture, "Save a screenshot (local only)", hotkeys.Capture.DisplayName);
         _menu.Items.Add(new ToolStripSeparator());
+        Add(actions.Cancel, "Cancel the current request", null);
+        _menu.Items.Add(new ToolStripSeparator());
         Add(actions.ShowShortcuts, "Shortcuts and status", null);
         Add(actions.OpenSettings, "Settings", hotkeys.Settings.DisplayName);
         _menu.Items.Add(new ToolStripSeparator());
@@ -133,6 +135,7 @@ internal sealed record TrayActions(
     Action? Type = null,
     Action? Describe = null,
     Action? Capture = null,
+    Action? Cancel = null,
     Action? ShowShortcuts = null,
     Action? OpenSettings = null,
     Action? Quit = null);

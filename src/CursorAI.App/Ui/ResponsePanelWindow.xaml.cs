@@ -38,6 +38,16 @@ public partial class ResponsePanelWindow : Window
     /// <summary>Raised when a question is typed and submitted.</summary>
     public event EventHandler<string>? QuestionSubmitted;
 
+    /// <summary>
+    /// Raised when the user asks to abandon the request in flight. Needed because a request can
+    /// take over a minute on a throttled free tier, and without this the only way to stop one
+    /// was to quit the application.
+    /// </summary>
+    public event EventHandler? CancelRequested;
+
+    /// <summary>True while an activity owns the state, which is when cancelling is meaningful.</summary>
+    private bool IsBusy { get; set; }
+
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         SourceInitialized -= OnSourceInitialized;
@@ -94,7 +104,10 @@ public partial class ResponsePanelWindow : Window
     /// </summary>
     public string ProviderDisplayName { get; set; } = "the vision provider";
 
-    /// <summary>Reflects the current activity, so a long request does not look like a hang.</summary>
+    /// <summary>
+    /// Reflects the current activity, so a long request does not look like a hang, and offers
+    /// cancellation only while there is something to cancel.
+    /// </summary>
     public void SetStatus(BuddyState state)
     {
         StatusText.Text = state switch
@@ -105,6 +118,27 @@ public partial class ResponsePanelWindow : Window
             BuddyState.Guiding => "Showing you where",
             _ => "Idle"
         };
+
+        IsBusy = state != BuddyState.Idle;
+        CancelButton.Visibility = IsBusy ? Visibility.Visible : Visibility.Collapsed;
+        HintText.Text = IsBusy ? "Esc to cancel" : "Esc to dismiss";
+    }
+
+    /// <summary>Reports that the request was abandoned, replacing the in-flight status.</summary>
+    public void ShowCancelled()
+    {
+        BodyText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xD5, 0x4F));
+        BodyText.Text =
+            "Cancelled." + Environment.NewLine + Environment.NewLine
+            + "Note that a request already sent may still count against your provider's daily "
+            + "allowance, because cancelling stops CursorAI waiting rather than un-sending it.";
+        MetadataText.Visibility = Visibility.Collapsed;
+        ShowNearCursor(activate: false);
+    }
+
+    private void CancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        CancelRequested?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dismiss()
@@ -166,10 +200,22 @@ public partial class ResponsePanelWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape)
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        // Escape means the most useful thing available: stop the request if one is running,
+        // otherwise get the panel out of the way.
+        if (IsBusy)
+        {
+            CancelRequested?.Invoke(this, EventArgs.Empty);
+        }
+        else
         {
             Dismiss();
-            e.Handled = true;
         }
     }
 

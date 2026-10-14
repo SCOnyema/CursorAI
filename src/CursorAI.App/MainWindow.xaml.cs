@@ -100,6 +100,7 @@ public partial class MainWindow : Window
             _hotkeyService.TypeHotkeyPressed += HotkeyService_TypeHotkeyPressed;
             _hotkeyService.SettingsHotkeyPressed += HotkeyService_SettingsHotkeyPressed;
             _responsePanel.QuestionSubmitted += ResponsePanel_QuestionSubmitted;
+            _responsePanel.CancelRequested += ResponsePanel_CancelRequested;
             _responsePanel.ProviderDisplayName = ((App)Application.Current).ProviderDisplayName;
 
             if (_hotkeyService.UnavailableHotkeys.Count > 0)
@@ -256,12 +257,9 @@ public partial class MainWindow : Window
                 await SpeakResponseAsync(activity, result, cancellationSource.Token);
             }
         }
-        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            Console.Error.WriteLine($"Vision analysis canceled after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-            Console.Error.WriteLine("Cancellation source: application cancellation token");
-            Console.Error.WriteLine("Application cancellation requested: true");
-            Debug.WriteLine("Vision analysis was canceled.");
+            ReportCancelled("Vision analysis", elapsed.Elapsed);
         }
         catch (Exception exception)
         {
@@ -410,6 +408,7 @@ public partial class MainWindow : Window
                     Type: () => HotkeyService_TypeHotkeyPressed(this, EventArgs.Empty),
                     Describe: () => HotkeyService_VisionHotkeyPressed(this, EventArgs.Empty),
                     Capture: () => HotkeyService_CaptureHotkeyPressed(this, EventArgs.Empty),
+                    Cancel: CancelActiveRequest,
                     ShowShortcuts: ShowShortcuts,
                     OpenSettings: ShowSettings,
                     Quit: () => HotkeyService_QuitHotkeyPressed(this, EventArgs.Empty)));
@@ -591,6 +590,49 @@ public partial class MainWindow : Window
     /// Runs a typed question through exactly the same pipeline as a spoken one, so typing is a
     /// different input rather than a different feature.
     /// </summary>
+    private void ResponsePanel_CancelRequested(object? sender, EventArgs e)
+    {
+        CancelActiveRequest();
+    }
+
+    /// <summary>
+    /// Abandons the request in flight, if any.
+    /// </summary>
+    /// <remarks>
+    /// A request can take over a minute on a throttled free tier, and until this existed the
+    /// only way to stop one was to quit the application. Cancelling stops CursorAI waiting; it
+    /// cannot un-send a request that has already left, so the provider's daily allowance may
+    /// still have been spent. The panel says so rather than implying a refund.
+    /// </remarks>
+    private void CancelActiveRequest()
+    {
+        CancellationTokenSource? active = _visionCancellationSource;
+
+        if (active is null || active.IsCancellationRequested)
+        {
+            Console.WriteLine("Nothing to cancel.");
+            return;
+        }
+
+        Console.WriteLine("Cancelling the request in flight.");
+
+        // Only stop playback if something is actually being spoken: Piper's Cancel restarts the
+        // process, which costs a model reload, so doing it mid-vision-call would be wasteful.
+        if (_buddyStateManager.CurrentState == BuddyState.Responding)
+        {
+            _speechServices.Synthesizer?.Cancel();
+        }
+
+        try
+        {
+            active.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // It completed between the null check and here, which is not a failure.
+        }
+    }
+
     private async void ResponsePanel_QuestionSubmitted(object? sender, string question)
     {
         if (_isShuttingDown || string.IsNullOrWhiteSpace(question))
@@ -641,7 +683,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            Console.Error.WriteLine("Typed question canceled.");
+            ReportCancelled("Typed question", elapsed.Elapsed);
         }
         catch (Exception exception)
         {
@@ -663,6 +705,20 @@ public partial class MainWindow : Window
     /// Reports a failure to the console and to the panel. Console-only reporting is invisible
     /// unless CursorAI was launched from a terminal, which is how failures used to go unnoticed.
     /// </summary>
+    /// <summary>
+    /// Reports an abandoned request. Separate from ReportFailure because cancelling is the user
+    /// getting what they asked for, not something going wrong.
+    /// </summary>
+    private void ReportCancelled(string what, TimeSpan elapsed)
+    {
+        Console.WriteLine($"{what} cancelled after {elapsed.TotalSeconds:F1} seconds.");
+
+        if (!_isShuttingDown)
+        {
+            _responsePanel.ShowCancelled();
+        }
+    }
+
     private void ReportFailure(string what, Exception exception, TimeSpan elapsed)
     {
         string detail = exception is InvalidOperationException
@@ -877,7 +933,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            Console.Error.WriteLine($"Voice turn canceled after {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+            ReportCancelled("Voice turn", elapsed.Elapsed);
         }
         catch (Exception exception)
         {
@@ -960,6 +1016,7 @@ public partial class MainWindow : Window
         _hotkeyService.TypeHotkeyPressed -= HotkeyService_TypeHotkeyPressed;
         _hotkeyService.SettingsHotkeyPressed -= HotkeyService_SettingsHotkeyPressed;
         _responsePanel.QuestionSubmitted -= ResponsePanel_QuestionSubmitted;
+        _responsePanel.CancelRequested -= ResponsePanel_CancelRequested;
 
         try
         {

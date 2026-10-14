@@ -49,6 +49,8 @@ Environment variables still take precedence over anything saved in settings, so 
 - **Ctrl + Alt + K** (*Keys*) opens settings, where API keys, the provider, and the model can be set without a terminal.
 
 Every action is also on the notification-area icon's menu, with its shortcut shown beside it.
+
+A request in flight can be abandoned: press **Esc** in the response panel, click **Cancel** there, or use *Cancel the current request* on the tray menu. While a request is running Esc cancels it; otherwise Esc dismisses the panel. Cancelling stops CursorAI waiting but cannot un-send a request that has already left, so the provider's daily allowance may still have been spent — the panel says so rather than implying a refund.
 - **Ctrl + Alt + Q** (*Quit*) shuts CursorAI down. The buddy is click-through with no taskbar entry, so this is the only way to stop it from the keyboard.
 - **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
