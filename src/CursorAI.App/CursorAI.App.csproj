@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- For NotifyIcon only. The raw Shell_NotifyIcon path needs a message-only window
+         and menu interop, because the buddy is WS_EX_NOACTIVATE and click-through. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>cursorai.ico</ApplicationIcon>
 
@@ -34,6 +37,21 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Embedded so a single-file published build can load it with no file beside the exe. -->
+    <EmbeddedResource Include="cursorai.ico" />
+  </ItemGroup>
+
+  <!--
+    UseWindowsForms adds these as implicit global usings, which then collide with WPF's Point,
+    Size, Application and KeyEventArgs across the whole project. Only the tray icon needs
+    WinForms, and it imports them explicitly.
+  -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Google.GenAI" Version="1.21.1" />

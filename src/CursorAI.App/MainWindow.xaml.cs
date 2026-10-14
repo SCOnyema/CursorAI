@@ -45,6 +45,8 @@ public partial class MainWindow : Window
     private bool _cleanupComplete;
     private volatile bool _isShuttingDown;
     private bool _isSettingsOpen;
+    private bool _isConsentOpen;
+    private TrayIconHost? _trayIcon;
 
     public MainWindow()
     {
@@ -89,7 +91,8 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("The CursorAI hotkeys are already initialized.");
             }
 
-            _hotkeyService = new HotkeyService(source, HotkeyConfiguration.FromEnvironment());
+            HotkeyConfiguration configuration = HotkeyConfiguration.FromEnvironment();
+            _hotkeyService = new HotkeyService(source, configuration);
             _hotkeyService.ActivationHotkeyPressed += HotkeyService_ActivationHotkeyPressed;
             _hotkeyService.CaptureHotkeyPressed += HotkeyService_CaptureHotkeyPressed;
             _hotkeyService.VisionHotkeyPressed += HotkeyService_VisionHotkeyPressed;
@@ -97,6 +100,7 @@ public partial class MainWindow : Window
             _hotkeyService.TypeHotkeyPressed += HotkeyService_TypeHotkeyPressed;
             _hotkeyService.SettingsHotkeyPressed += HotkeyService_SettingsHotkeyPressed;
             _responsePanel.QuestionSubmitted += ResponsePanel_QuestionSubmitted;
+            _responsePanel.ProviderDisplayName = ((App)Application.Current).ProviderDisplayName;
 
             if (_hotkeyService.UnavailableHotkeys.Count > 0)
             {
@@ -113,7 +117,10 @@ public partial class MainWindow : Window
             UpdateBuddyPosition();
             _cursorTrackingTimer.Start();
 
+            CreateTrayIcon(configuration);
+            EnsureConsent();
             PromptForCredentialsIfMissing();
+            ShowShortcuts();
         }
         catch
         {
@@ -209,6 +216,11 @@ public partial class MainWindow : Window
 
         // Ownership is taken before the capture so a second press during capture is rejected
         // as well, and so the scope restores whatever state was current beforehand.
+        if (!CanSendScreen())
+        {
+            return;
+        }
+
         IBuddyActivity? activity = _buddyStateManager.TryBeginActivity(BuddyState.Thinking);
         if (activity is null)
         {
@@ -383,6 +395,73 @@ public partial class MainWindow : Window
     /// no taskbar entry or tray icon, so before this a running instance could only be ended
     /// through Task Manager - and a forgotten one locks the build output.
     /// </summary>
+    /// <summary>
+    /// Creates the notification-area icon. Failing to create it is reported but not fatal: the
+    /// shortcuts still work, and losing the tray icon should not lose the application.
+    /// </summary>
+    private void CreateTrayIcon(HotkeyConfiguration configuration)
+    {
+        try
+        {
+            _trayIcon = new TrayIconHost(
+                configuration,
+                new TrayActions(
+                    Ask: () => HotkeyService_ActivationHotkeyPressed(this, EventArgs.Empty),
+                    Type: () => HotkeyService_TypeHotkeyPressed(this, EventArgs.Empty),
+                    Describe: () => HotkeyService_VisionHotkeyPressed(this, EventArgs.Empty),
+                    Capture: () => HotkeyService_CaptureHotkeyPressed(this, EventArgs.Empty),
+                    ShowShortcuts: ShowShortcuts,
+                    OpenSettings: ShowSettings,
+                    Quit: () => HotkeyService_QuitHotkeyPressed(this, EventArgs.Empty)));
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"Could not create the tray icon: {exception.GetType().Name}: {exception.Message}");
+            Debug.WriteLine($"Tray icon failed: {exception}");
+        }
+    }
+
+    /// <summary>
+    /// Lists the shortcuts and the engines in use. Shown once at startup and from the tray,
+    /// because nothing else tells a new user that any shortcut exists.
+    /// </summary>
+    private void ShowShortcuts()
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        HotkeyConfiguration keys = HotkeyConfiguration.FromEnvironment();
+        App app = (App)Application.Current;
+
+        string unavailable = _hotkeyService?.UnavailableHotkeys.Count > 0
+            ? Environment.NewLine + Environment.NewLine + "Unavailable (owned by another app): "
+              + string.Join("; ", _hotkeyService.UnavailableHotkeys)
+            : string.Empty;
+
+        string body =
+            $"{keys.Activation.DisplayName}  -  hold and speak, release to ask"
+            + Environment.NewLine
+            + $"{keys.Type.DisplayName}  -  type a question"
+            + Environment.NewLine
+            + $"{keys.Vision.DisplayName}  -  describe this screen"
+            + Environment.NewLine
+            + $"{keys.Capture.DisplayName}  -  save a screenshot, nothing sent"
+            + Environment.NewLine
+            + $"{keys.Settings.DisplayName}  -  settings"
+            + Environment.NewLine
+            + $"{keys.Quit.DisplayName}  -  quit"
+            + unavailable;
+
+        string engines = $"{app.ProviderDisplayName} - "
+            + $"{_speechServices.Recognizer?.Description ?? "no speech input"} - "
+            + $"{_speechServices.Synthesizer?.Description ?? "no speech output"}";
+
+        _responsePanel.ShowAnswer(body, engines);
+    }
+
     private void HotkeyService_SettingsHotkeyPressed(object? sender, EventArgs e)
     {
         if (!_isShuttingDown)
@@ -417,6 +496,65 @@ public partial class MainWindow : Window
         {
             _isSettingsOpen = false;
         }
+    }
+
+    /// <summary>
+    /// Shows the privacy disclosure when it has not been accepted for the current version, and
+    /// returns whether sending is permitted. Called at startup and again before each external
+    /// request, so a declined session can be reconsidered without restarting.
+    /// </summary>
+    private bool EnsureConsent()
+    {
+        if (PrivacyConsent.IsAccepted(AppConfiguration.Settings))
+        {
+            return true;
+        }
+
+        if (_isConsentOpen)
+        {
+            return false;
+        }
+
+        _isConsentOpen = true;
+        try
+        {
+            ConsentWindow consent = new();
+            consent.ShowDialog();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"Could not show the privacy disclosure: {exception.GetType().Name}: {exception.Message}");
+            Debug.WriteLine($"Consent window failed: {exception}");
+            // Never fail open: without agreement, nothing is sent.
+            return false;
+        }
+        finally
+        {
+            _isConsentOpen = false;
+        }
+
+        return PrivacyConsent.IsAccepted(AppConfiguration.Settings);
+    }
+
+    /// <summary>
+    /// Gate for every path that sends the screen off the machine. Declining leaves local-only
+    /// capture working, so this reports rather than disables the application.
+    /// </summary>
+    private bool CanSendScreen()
+    {
+        if (EnsureConsent())
+        {
+            return true;
+        }
+
+        Console.WriteLine("Request not sent: the privacy disclosure has not been accepted.");
+        _responsePanel.ShowFailure(
+            "Nothing was sent." + Environment.NewLine + Environment.NewLine
+            + "CursorAI is in local-only mode because the privacy disclosure was declined. "
+            + "Local screenshots still work. Press the settings shortcut and restart to be "
+            + "asked again.");
+        return false;
     }
 
     /// <summary>
@@ -456,6 +594,11 @@ public partial class MainWindow : Window
     private async void ResponsePanel_QuestionSubmitted(object? sender, string question)
     {
         if (_isShuttingDown || string.IsNullOrWhiteSpace(question))
+        {
+            return;
+        }
+
+        if (!CanSendScreen())
         {
             return;
         }
@@ -663,6 +806,11 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task RunVoiceTurnAsync()
     {
+        if (!CanSendScreen())
+        {
+            return;
+        }
+
         IBuddyActivity? activity = _buddyStateManager.TryBeginActivity(BuddyState.Listening);
         if (activity is null)
         {
@@ -791,6 +939,7 @@ public partial class MainWindow : Window
         _guidanceOverlay.Close();
         _responsePanel.Dismiss();
         _responsePanel.Close();
+        _trayIcon?.Dispose();
 
         Closed -= MainWindow_Closed;
         SourceInitialized -= MainWindow_SourceInitialized;

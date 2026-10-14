@@ -11,7 +11,8 @@ public sealed record UserSettings(
     string? GeminiApiKey = null,
     string? OpenAiApiKey = null,
     string? Provider = null,
-    string? GeminiModel = null)
+    string? GeminiModel = null,
+    int? ConsentVersion = null)
 {
     public static UserSettings Empty { get; } = new();
 

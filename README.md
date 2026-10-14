@@ -29,6 +29,12 @@ dotnet publish .\src\CursorAI.App\CursorAI.App.csproj -c Release -p:PublishProfi
 
 That produces one file of roughly 65 MB at `.\dist\CursorAI.App.exe`. Copy it anywhere and run it. The build is unsigned, so Windows SmartScreen will warn on first launch.
 
+On first run CursorAI shows what leaves your machine and asks you to agree before anything is sent. Declining is supported: local-only screenshots keep working and nothing is transmitted. It then opens settings if no key is configured, and shows a card listing every shortcut.
+
+A **notification-area icon** is CursorAI's persistent surface: right-click it for every action with its shortcut beside it, or double-click to type a question. Without it an installed build would present a cursor-following eye and nothing else, with no way to learn that any shortcut exists.
+
+Diagnostics are written to `%LOCALAPPDATA%\CursorAI\logs\cursorai-YYYYMMDD.log`, kept for seven days. Everything the console shows goes there too, so a problem is reportable even when CursorAI was never launched from a terminal. Logs can include window titles, which is why they are pruned rather than kept indefinitely.
+
 On first run, with no key configured, CursorAI opens its settings window and says so in the response panel. Paste a Gemini API key there; a free one can be created at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Press **Ctrl + Alt + K** to reopen settings at any time.
 
 Keys are encrypted with DPAPI for your Windows account and stored in `%LOCALAPPDATA%\CursorAI\settings.json`. The plaintext key never touches disk. That is better than a plain configuration file and is not a secret vault: anything running as your Windows account can decrypt it, which is unavoidable for a desktop application that has to use the key itself.
@@ -41,6 +47,8 @@ Environment variables still take precedence over anything saved in settings, so 
 - **Ctrl + Alt + S** (*Screenshot*) performs a local-only capture of the monitor containing the cursor and writes a PNG plus JSON context beneath `artifacts/captures/`. It sends nothing externally.
 - **Ctrl + Alt + T** (*Type*) opens the response panel focused on its input box, so a question can be typed instead of spoken.
 - **Ctrl + Alt + K** (*Keys*) opens settings, where API keys, the provider, and the model can be set without a terminal.
+
+Every action is also on the notification-area icon's menu, with its shortcut shown beside it.
 - **Ctrl + Alt + Q** (*Quit*) shuts CursorAI down. The buddy is click-through with no taskbar entry, so this is the only way to stop it from the keyboard.
 - **Ctrl + Alt + D** (*Describe*) explicitly captures the monitor containing the cursor and sends the screenshot, cursor/monitor context, foreground process/title, and temporary question to the currently selected provider. Gemini is selected for development.
 
@@ -160,6 +168,8 @@ These assignments affect only the current PowerShell process/session and child p
 ## Privacy boundary
 
 The buddy window is excluded from screen capture via `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`. Before this, the window—layered because of `AllowsTransparency`—was pulled into CursorAI's own screenshots by `CAPTUREBLT`, covering an 80x80 pixel region at cursor+(20,20) and occluding the very thing the cursor pointed at.
+
+Agreement is recorded per disclosure version, so a future change to what is sent asks again rather than inheriting the old answer. The response panel names the provider while a request is in flight, so the moment your screen leaves the machine is visible rather than implied.
 
 Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press, a typed question, or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised *text* of your question. **No audio ever leaves the machine, in either direction.** Recordings are held in memory, transcribed locally by Whisper, and discarded; they are never written to disk. Spoken replies are synthesised locally by Piper, or by the Windows voice, from text that is already on this machine. No cloud speech service is used for recognition or for synthesis. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
 

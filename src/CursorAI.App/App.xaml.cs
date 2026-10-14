@@ -1,4 +1,5 @@
 using System.Windows;
+using CursorAI.App.Diagnostics;
 using CursorAI.App.Input;
 using CursorAI.App.Speech;
 using CursorAI.App.State;
@@ -23,6 +24,9 @@ public partial class App : Application
     public App()
     {
         DevelopmentConsole.TryAttachToParent();
+
+        // Started before anything else can fail, so a startup failure is still recorded.
+        FileLog.Start();
 
         // Checked before anything is constructed, so a duplicate launch never grabs the
         // microphone or a provider transport on its way out.
@@ -66,6 +70,14 @@ public partial class App : Application
     public LocalSpeechServices SpeechServices { get; }
 
     /// <summary>
+    /// Short provider name for the panel, so the user can see where their screen is going.
+    /// </summary>
+    public string ProviderDisplayName =>
+        _visionProvider.Description.Split('(')[0].Trim() is { Length: > 0 } name
+            ? name
+            : "the vision provider";
+
+    /// <summary>
     /// Says plainly what voice can and cannot do on this machine. Silence here would leave a
     /// missing microphone looking like a broken feature.
     /// </summary>
@@ -89,6 +101,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        FileLog.Stop();
         SpeechServices.Dispose();
         _visionProvider.Dispose();
         _singleInstanceMutex.Dispose();

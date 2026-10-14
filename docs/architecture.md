@@ -8,7 +8,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.4 — Voice input/output: complete; local Whisper recognition and local Piper synthesis, verified end to end
 - V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
 - V0.6 — Windows UI Automation grounding: implemented; model targets snapped to real element bounds
-- V1.0 — First complete working version: in progress; response panel, typed input, packaging and settings implemented
+- V1.0 — First complete working version: in progress; response panel, typed input, packaging, settings, tray icon, logging and privacy consent implemented
 
 ## Vision Pipeline
 
@@ -80,6 +80,12 @@ The response panel is the third window excluded from capture, alongside the budd
 `BuddyStateManager` distinguishes two kinds of writer. Ambient changes, such as the idle/listening toggle, are cosmetic and may be refused. Activities, such as a vision request and later a voice turn, take exclusive ownership through `TryBeginActivity` and restore the prior state when their scope is disposed. Conflating the two was a defect: the activation hotkey used to flip state to Idle mid-request, killing the Thinking animation while the call was still running, and the request's own cleanup then forced Idle regardless of what the user had selected.
 
 The development **Ctrl + Alt + S** path stops inside the local boundary and saves only local PNG/JSON artifacts. The **Ctrl + Alt + D** path, and a spoken turn started with **Ctrl + Alt + A**, cross the external boundary explicitly. There is no automatic or background capture and no automatic provider fallback.
+
+Every path that sends the screen off the machine is gated on an accepted privacy disclosure, checked again before each request rather than only at startup, so a declined session can be reconsidered without restarting. Agreement is stored as a version number: changing what leaves the machine invalidates it and asks again, rather than inheriting an answer given about something else. Declining is a supported state, not an error - local-only capture keeps working - so the gate never has to choose between informed agreement and a usable application. Failing to show the disclosure fails closed.
+
+The notification-area icon is the only persistent, discoverable surface: a click-through buddy with no taskbar entry teaches nobody that a shortcut exists. It is built on WinForms' NotifyIcon, whose implicit global usings are removed in the project file because they collide with WPF's Point, Size, Application and KeyEventArgs throughout.
+
+Diagnostics are mirrored to a dated file under `%LOCALAPPDATA%` by wrapping the console writers, rather than by adding a logging call at every site, so the log cannot drift out of step with what the console shows. Files are pruned after seven days because they can contain window titles.
 
 Credentials resolve from the environment first and from stored user settings second. The ordering keeps an existing development workflow behaving exactly as before while making the application usable by someone who never opens a terminal; a value set in both places is not ambiguous, and the settings window names the fields the environment is controlling. Stored credentials are encrypted with DPAPI at `CurrentUser` scope under `%LOCALAPPDATA%\CursorAI`, never beside the executable, because an installed build may sit somewhere unwritable. A settings file copied from another machine or account cannot be decrypted, which degrades to no credential rather than to a crash.
 

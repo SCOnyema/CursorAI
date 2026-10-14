@@ -88,13 +88,19 @@ public partial class ResponsePanelWindow : Window
         Keyboard.Focus(InputBox);
     }
 
+    /// <summary>
+    /// Provider shown while a request is in flight, so the moment the screen leaves the machine
+    /// is visible rather than implied.
+    /// </summary>
+    public string ProviderDisplayName { get; set; } = "the vision provider";
+
     /// <summary>Reflects the current activity, so a long request does not look like a hang.</summary>
     public void SetStatus(BuddyState state)
     {
         StatusText.Text = state switch
         {
             BuddyState.Listening => "Listening...",
-            BuddyState.Thinking => "Thinking...",
+            BuddyState.Thinking => $"Sending your screen to {ProviderDisplayName}...",
             BuddyState.Responding => "Speaking...",
             BuddyState.Guiding => "Showing you where",
             _ => "Idle"
