@@ -44,8 +44,7 @@ public sealed class LocalSpeechServices : IDisposable
     {
         List<string> unavailable = [];
         ISpeechRecognizer? recognizer = CreateRecognizer(unavailable);
-        ISpeechSynthesizer? synthesizer = TryCreate(
-            static () => new WindowsSpeechSynthesizer(), "Speech synthesis", unavailable);
+        ISpeechSynthesizer? synthesizer = CreateSynthesizer(unavailable);
 
         return new LocalSpeechServices(recognizer, synthesizer, unavailable);
     }
@@ -80,6 +79,38 @@ public sealed class LocalSpeechServices : IDisposable
 
         return whisper ?? TryCreate(
             static () => new WindowsSpeechRecognizer(), "Speech recognition", unavailable);
+    }
+
+    /// <summary>
+    /// Prefers Piper and falls back to the built-in Windows voice.
+    /// </summary>
+    /// <remarks>
+    /// Piper is not bundled, so a fresh install has no binary and no voice; without the
+    /// fallback, spoken answers would simply stop working. The Windows voice sounds robotic but
+    /// is present everywhere, which makes it a floor rather than a silence - the same reasoning
+    /// as the legacy recognizer.
+    /// </remarks>
+    private static ISpeechSynthesizer? CreateSynthesizer(List<string> unavailable)
+    {
+        string exe = PiperVoiceLocator.ResolveExecutablePath(
+            AppConfiguration.Resolve(PiperVoiceLocator.ExecutableEnvironmentVariable, static _ => null),
+            PiperVoiceLocator.DefaultDirectory);
+        string voice = PiperVoiceLocator.ResolveVoicePath(
+            AppConfiguration.Resolve(PiperVoiceLocator.VoiceEnvironmentVariable, static _ => null),
+            PiperVoiceLocator.DefaultDirectory);
+
+        if (!File.Exists(exe) || !File.Exists(voice))
+        {
+            unavailable.Add(PiperVoiceLocator.DescribeMissing(exe, voice));
+            return TryCreate(
+                static () => new WindowsSpeechSynthesizer(), "Speech synthesis", unavailable);
+        }
+
+        ISpeechSynthesizer? piper = TryCreate(
+            () => new PiperSpeechSynthesizer(exe, voice), "Piper synthesis", unavailable);
+
+        return piper ?? TryCreate(
+            static () => new WindowsSpeechSynthesizer(), "Speech synthesis", unavailable);
     }
 
     private static T? TryCreate<T>(Func<T> create, string role, List<string> unavailable)

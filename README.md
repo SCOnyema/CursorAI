@@ -85,9 +85,27 @@ Accepted forms are any combination of `Ctrl`, `Alt`, `Shift`, and `Win` plus one
 
 ## Voice
 
-Speech recognition uses **Whisper** running locally, through the whisper.cpp binding. Synthesis uses the Windows speech engine. Both run **entirely on this machine**. Microphone audio never leaves the computer, so voice stays inside the local trust boundary and consumes none of the vision provider's request quota. Only the screenshot and the recognised question cross the boundary, exactly as the **V** shortcut already does.
+Speech recognition uses **Whisper** and synthesis uses **Piper**, both running locally. Neither sends anything anywhere. Microphone audio never leaves the computer, so voice stays inside the local trust boundary and consumes none of the vision provider's request quota. Only the screenshot and the recognised question cross the boundary, exactly as the **V** shortcut already does.
 
 Voice input is **push-to-talk**: hold **Ctrl + Alt + A** while speaking and release to transcribe. Whisper cannot stream, so the utterance needs an explicit end; this also removes the old engine's voice activity detection, which truncated sentences mid-way. A single utterance is capped at twenty seconds.
+
+### A better voice
+
+The built-in Windows voice sounds robotic. Piper is a local neural synthesiser that sounds markedly better, and like the Whisper model it is supplied rather than bundled — **nothing is downloaded automatically**. With Piper absent, CursorAI uses the Windows voice and prints what to install.
+
+```powershell
+# extract piper_windows_amd64.zip from github.com/rhasspy/piper/releases (about 21 MB) into:
+#   %LOCALAPPDATA%\CursorAI\tts\piper
+# then add a voice (about 60 MB) from huggingface.co/rhasspy/piper-voices:
+#   en/en_US/lessac/medium/en_US-lessac-medium.onnx  and  .onnx.json
+$env:CURSORAI_PIPER_VOICE = "en_US-amy-medium"   # optional; default is en_US-lessac-medium
+```
+
+The engine binary is the MIT-licensed archived release, deliberately: the maintained repository is GPL-3.0 and ships only a Python wheel for Windows. CursorAI runs Piper as a separate process and distributes no part of it, so it contains no GPL code either way. Voices from `rhasspy/piper-voices` are MIT.
+
+Piper is kept running rather than started per answer. Measured on the development machine: started per answer it took 6.74s for 9.8s of speech, of which only 1.55s was inference; held open, audio begins after about 0.65s on the first answer and 0.45s thereafter. The Windows voice begins effectively instantly, so the half second buys the better voice.
+
+Markdown is stripped before playback either way, since a synthesiser reads `**Export PDF**` aloud as “star star Export PDF star star”.
 
 ### Whisper models
 
@@ -143,6 +161,6 @@ These assignments affect only the current PowerShell process/session and child p
 
 The buddy window is excluded from screen capture via `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`. Before this, the window—layered because of `AllowsTransparency`—was pulled into CursorAI's own screenshots by `CAPTUREBLT`, covering an 80x80 pixel region at cursor+(20,20) and occluding the very thing the cursor pointed at.
 
-Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press, a typed question, or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised *text* of your question. **The audio never leaves the machine**: recording is held in memory, transcribed locally by Whisper, and discarded. No cloud speech service is used, and recorded audio is never written to disk. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
+Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press, a typed question, or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised *text* of your question. **No audio ever leaves the machine, in either direction.** Recordings are held in memory, transcribed locally by Whisper, and discarded; they are never written to disk. Spoken replies are synthesised locally by Piper, or by the Windows voice, from text that is already on this machine. No cloud speech service is used for recognition or for synthesis. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
 
 Developers using Gemini’s free tier should avoid testing with sensitive or private screens and review Google’s current Gemini API data-use terms before submitting real sensitive information.

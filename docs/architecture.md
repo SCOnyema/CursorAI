@@ -5,7 +5,7 @@ This roadmap distinguishes implemented milestones from planned functionality.
 - V0.1 — Cursor companion: complete
 - V0.2 — Global controls and application state: complete
 - V0.3 — Screen capture and vision: complete; verified end to end against the live provider
-- V0.4 — Voice input/output: complete; local Whisper recognition and local synthesis, verified end to end
+- V0.4 — Voice input/output: complete; local Whisper recognition and local Piper synthesis, verified end to end
 - V0.5 — Visual guidance overlays: implemented; highlights drawn over located elements
 - V0.6 — Windows UI Automation grounding: implemented; model targets snapped to real element bounds
 - V1.0 — First complete working version: in progress; response panel, typed input, packaging and settings implemented
@@ -66,6 +66,12 @@ The guidance overlay is excluded from capture with `SetWindowDisplayAffinity`, e
 Speech recognition runs locally through Whisper (Whisper.net and Whisper.net.Runtime, both MIT, verified from package metadata). Whisper cannot stream, so the contract gained a push-to-talk predicate: `RegisterHotKey` reports presses but never releases, so the release is polled with `GetAsyncKeyState` and the utterance ends when the key comes up. Audio is captured at 16 kHz mono 16-bit PCM, which is exactly what the model consumes, held in memory, and discarded after transcription; it is never written to disk and never leaves the machine.
 
 Models are read from `%LOCALAPPDATA%\CursorAI\models` and are never downloaded automatically. A missing model degrades to the legacy Windows recognizer with instructions naming the file, the folder and the command, because a fresh install has no model and voice input would otherwise simply be dead. The legacy engine mishears badly but exists on every Windows machine, which makes it a floor rather than a silence.
+
+Synthesis runs locally through Piper, invoked as a persistent child process. Persistence is the design rather than an optimisation: measured on the development machine, starting Piper per answer cost 6.74s for 9.8s of speech of which only 1.55s was inference, while a process held open produced first audio after 0.65s cold and 0.45s warm. Raw PCM is streamed from stdout and played as it arrives, so playback starts well before synthesis finishes.
+
+Piper emits no delimiter between utterances, so the end of one is inferred from the output stream going quiet. That rule needs two phases rather than one, because an idle stream means "not started" until the first chunk arrives: applying the idle gap alone made a ten-second answer report completion in 0.41s. The heuristic only decides when the call returns; it cannot truncate speech, because playback drains whatever is already buffered.
+
+Windows.Media.SpeechSynthesis was evaluated and rejected on measurement: it exposes only David, Zira and Mark on the development machine, the same engine System.Speech already uses, with no natural voices. Kokoro-82M is Apache-2.0 for code and weights but needs ONNX Runtime plus a phonemizer in .NET, and its usual phonemizer is itself GPL-3.0, so it costs more work and reintroduces the licence question. Piper is run as a separate process whose files the user supplies, so CursorAI distributes no Piper code and no GPL code, and the instructions point at the archived MIT build rather than the maintained GPL one.
 
 A spoken turn runs recognition, capture, analysis, and playback inside one activity, advancing Listening to Thinking to Responding without releasing ownership. Speech never crosses the external trust boundary: both engines are on-device, so the audio path adds no network surface and spends no provider quota. Engine availability depends on machine state outside CursorAI's control, so a missing recogniser, microphone, or output device disables voice alone and is reported at startup rather than preventing the application from running.
 
