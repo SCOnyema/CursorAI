@@ -8,16 +8,42 @@ Technology stack: C#, .NET 10, WPF
 
 V0.1 Cursor Companion and V0.2 Controls & State are complete. V0.3.3 now includes two implementations of the provider-neutral vision boundary:
 
-- `GeminiVisionProvider`, currently selected for development and using `gemini-3.8-flash` through the Gemini Interactions API
-- `OpenAIVisionProvider`, retained for future selection and using `gpt-5.4-mini`
+- `GeminiVisionProvider`, selected by default, using `gemini-3.8-flash` through the Gemini Interactions API
+- `OpenAIVisionProvider`, using `gpt-5.4-mini` through the Responses API
+- `OpenAICompatibleVisionProvider`, reaching any endpoint that speaks the OpenAI chat-completions API
 
-There is no provider-selection UI and no automatic fallback. The active provider is chosen at startup from `CURSORAI_VISION_PROVIDER`:
+There is no provider-selection UI and no automatic fallback. The active provider is chosen at startup from `CURSORAI_VISION_PROVIDER`, or in the settings window:
+
+| Value | Reaches | Credential |
+|---|---|---|
+| `gemini` (default) | Google Gemini Interactions API | `GEMINI_API_KEY` |
+| `openai` | OpenAI Responses API | `OPENAI_API_KEY` |
+| `compatible` | anything speaking the OpenAI chat-completions API | `CURSORAI_COMPATIBLE_API_KEY` (optional) |
 
 ```powershell
-$env:CURSORAI_VISION_PROVIDER = "openai"   # or "gemini" (the default)
+$env:CURSORAI_VISION_PROVIDER = "openai"
+$env:OPENAI_API_KEY           = "<key>"
+$env:OPENAI_MODEL             = "gpt-5.4-mini"   # optional; this is the default
 ```
 
-Exactly one provider is constructed. An unrecognised value stops startup with an explanatory message rather than quietly defaulting, because a typo must never result in screenshots going to a different vendor than intended.
+### Other providers through the compatible endpoint
+
+`compatible` exists so that one provider reaches many vendors: OpenRouter, Groq, Together, Azure OpenAI, and local model servers such as Ollama or LM Studio all expose `/chat/completions` with image content parts. Only the base URL and model change.
+
+```powershell
+$env:CURSORAI_VISION_PROVIDER     = "compatible"
+$env:CURSORAI_COMPATIBLE_BASE_URL = "https://openrouter.ai/api/v1"
+$env:CURSORAI_COMPATIBLE_MODEL    = "<a vision-capable model at that endpoint>"
+$env:CURSORAI_COMPATIBLE_API_KEY  = "<key>"
+```
+
+Neither value has a default, because which models exist depends entirely on which endpoint is configured. The API key is optional, since local servers usually need none.
+
+Chat-completions is used rather than OpenAI's newer Responses API precisely because third-party endpoints implement the former and almost none implement the latter. That is what makes this provider portable, and it is why `openai` remains a separate provider.
+
+**Pointed at a local model server this sends nothing off the machine at all**, which removes both the request quota and the external trust boundary. Speech is already fully local, so that would make a build where nothing leaves the computer. The trade is real: local vision models read fine screen text less reliably, and guidance coordinates depend on exactly that.
+
+Two cautions. Model identifiers and pricing move — this project has already had a default model head for retirement, and many older OpenAI identifiers stop working on 2026-10-23, so verify before committing to one. And nothing in the `openai` or `compatible` paths has been exercised against a live endpoint: no key and no local server were available when they were written, so treat the first real call as the test.
 
 ## Installing
 

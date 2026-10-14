@@ -3,7 +3,7 @@ using CursorAI.App.Vision;
 
 namespace CursorAI.Tests;
 
-public class GeminiTargetParserTests
+public class VisionTargetParserTests
 {
     [Fact]
     public void TryParse_ConvertsTheMeasuredNormalisedPayloadIntoPixels()
@@ -13,7 +13,7 @@ public class GeminiTargetParserTests
         // That reply scored mean IoU 0.91 with centres within 2 pixels.
         const string text = """{"answer":"The Export PDF button.","targets":[{"label":"Export PDF","box_2d":[369,155,429,262]}]}""";
 
-        GeminiTargetPayload? payload = GeminiTargetParser.TryParse(text, 1920, 1080);
+        VisionTargetPayload? payload = VisionTargetParser.TryParse(text, 1920, 1080);
 
         Assert.NotNull(payload);
         Assert.Equal("The Export PDF button.", payload!.Answer);
@@ -29,7 +29,7 @@ public class GeminiTargetParserTests
         // across the diagonal, which looks plausible on a square box and wrong on anything else.
         const string text = """{"answer":"a","targets":[{"label":"wide","box_2d":[100,0,200,1000]}]}""";
 
-        VisionTarget target = Assert.Single(GeminiTargetParser.TryParse(text, 1000, 1000)!.Targets);
+        VisionTarget target = Assert.Single(VisionTargetParser.TryParse(text, 1000, 1000)!.Targets);
 
         // y 100-200 and x 0-1000 means short and full width, not tall and narrow.
         Assert.Equal(new PhysicalScreenBounds(0, 100, 1000, 100), target.Bounds);
@@ -41,7 +41,7 @@ public class GeminiTargetParserTests
         const string text = "Sure, here you go:\n```json\n" +
             """{"answer":"ok","targets":[{"label":"X","box_2d":[0,0,100,100]}]}""" + "\n```\nHope that helps.";
 
-        GeminiTargetPayload? payload = GeminiTargetParser.TryParse(text, 1000, 1000);
+        VisionTargetPayload? payload = VisionTargetParser.TryParse(text, 1000, 1000);
 
         Assert.NotNull(payload);
         Assert.Equal("ok", payload!.Answer);
@@ -52,14 +52,14 @@ public class GeminiTargetParserTests
     public void TryParse_OnOrdinaryProse_ReturnsNull()
     {
         // The normal case for a plain description: not a failure.
-        Assert.Null(GeminiTargetParser.TryParse(
+        Assert.Null(VisionTargetParser.TryParse(
             "You are looking at File Explorer. Your cursor is over Rename Folder.", 1920, 1080));
     }
 
     [Fact]
     public void TryParse_OnProseContainingBraces_ReturnsNull()
     {
-        Assert.Null(GeminiTargetParser.TryParse(
+        Assert.Null(VisionTargetParser.TryParse(
             "The config shows { \"debug\": true } on screen.", 1920, 1080));
     }
 
@@ -75,7 +75,7 @@ public class GeminiTargetParserTests
             {"label":"also good","box_2d":[200,200,300,300]}]}
             """;
 
-        GeminiTargetPayload? payload = GeminiTargetParser.TryParse(text, 1000, 1000);
+        VisionTargetPayload? payload = VisionTargetParser.TryParse(text, 1000, 1000);
 
         Assert.NotNull(payload);
         Assert.Equal(["good", "also good"], payload!.Targets.Select(t => t.Label));
@@ -87,7 +87,7 @@ public class GeminiTargetParserTests
         // A normalised value above 1000 would otherwise place guidance off-monitor.
         const string text = """{"answer":"a","targets":[{"label":"X","box_2d":[900,900,1400,1400]}]}""";
 
-        VisionTarget target = Assert.Single(GeminiTargetParser.TryParse(text, 1000, 1000)!.Targets);
+        VisionTarget target = Assert.Single(VisionTargetParser.TryParse(text, 1000, 1000)!.Targets);
 
         Assert.Equal(new PhysicalScreenBounds(900, 900, 100, 100), target.Bounds);
     }
@@ -97,7 +97,7 @@ public class GeminiTargetParserTests
     {
         const string text = """{"targets":[{"label":"X","box_2d":[0,0,10,10]}]}""";
 
-        GeminiTargetPayload? payload = GeminiTargetParser.TryParse(text, 1000, 1000);
+        VisionTargetPayload? payload = VisionTargetParser.TryParse(text, 1000, 1000);
 
         Assert.NotNull(payload);
         Assert.Contains("targets", payload!.Answer);
@@ -110,6 +110,6 @@ public class GeminiTargetParserTests
     {
         const string text = """{"answer":"a","targets":[{"label":"X","box_2d":[0,0,10,10]}]}""";
 
-        Assert.Null(GeminiTargetParser.TryParse(text, width, height));
+        Assert.Null(VisionTargetParser.TryParse(text, width, height));
     }
 }

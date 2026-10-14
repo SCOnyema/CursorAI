@@ -256,7 +256,7 @@ public sealed class GeminiVisionProvider : IVisionProvider
         }
 
         string combined = string.Join(Environment.NewLine, textParts);
-        GeminiTargetPayload? payload = GeminiTargetParser.TryParse(combined, imagePixelWidth, imagePixelHeight);
+        VisionTargetPayload? payload = VisionTargetParser.TryParse(combined, imagePixelWidth, imagePixelHeight);
 
         return new VisionResult(
             payload?.Answer ?? combined,

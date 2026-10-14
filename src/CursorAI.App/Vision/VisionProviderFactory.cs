@@ -30,10 +30,14 @@ internal static class VisionProviderFactory
         {
             "gemini" => new GeminiVisionProvider(),
             "openai" => new OpenAIVisionProvider(),
+            // One name for every endpoint that speaks the OpenAI chat-completions API:
+            // OpenRouter, Groq, Together, Azure OpenAI, and local servers such as Ollama or
+            // LM Studio. Which one is reached is a matter of configuration, not of code.
+            "compatible" => new OpenAICompatibleVisionProvider(),
             _ => throw new InvalidOperationException(
                 $"{ProviderEnvironmentVariable} is set to '{providerName}', which is not a known "
-                + "vision provider. Valid values are 'gemini' and 'openai'. Leave it unset to use "
-                + $"'{DefaultProviderName}'.")
+                + "vision provider. Valid values are 'gemini', 'openai' and 'compatible'. Leave "
+                + $"it unset to use '{DefaultProviderName}'.")
         };
     }
 }

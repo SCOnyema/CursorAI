@@ -43,6 +43,12 @@ EXTERNAL TRUST BOUNDARY — entered only by explicit Ctrl + Alt + D or a spoken 
                                       VisionResult
 ```
 
+Three providers now share the boundary, which is what keeps it honest. `GeminiVisionProvider` uses raw HTTP against the Interactions API, `OpenAIVisionProvider` uses the official SDK's Responses API, and `OpenAICompatibleVisionProvider` uses raw HTTP against chat-completions with a configurable base URL. That last one is deliberately not built on the Responses API: third-party endpoints - OpenRouter, Groq, Together, Azure, and local servers such as Ollama or LM Studio - implement chat-completions and almost none implement Responses, so the choice of endpoint shape is what makes one provider reach many vendors.
+
+Guidance parsing is shared by all three. The format is the one `VisionPromptBuilder` asks for rather than anything a vendor defines, so the parser was renamed away from implying otherwise. Only the normalised-to-pixel conversion is provider business.
+
+Neither the OpenAI nor the compatible path has been exercised against a live endpoint; both were written without a key or a local server available, and that is recorded here rather than left to be discovered.
+
 The provider is selected at startup by `VisionProviderFactory` from `CURSORAI_VISION_PROVIDER`, defaulting to Gemini. Selection is explicit and total: one provider is constructed, an unknown name is a startup error rather than a silent default, and nothing is ever substituted at runtime. `IVisionProvider` extends `IDisposable` so the composition root holds the interface rather than a concrete type merely to release a transport.
 
 `VisionResult` carries the response text plus best-effort metadata: the model as reported by the provider, token usage where available, and latency. Latency is measured by `VisionService` rather than inside a provider so it means the same thing for all of them. Every metadata field is nullable, because providers differ in what they report and an absent count must not read as zero.

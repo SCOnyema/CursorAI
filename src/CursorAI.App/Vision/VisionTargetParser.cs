@@ -4,9 +4,14 @@ using CursorAI.App.Capture;
 namespace CursorAI.App.Vision;
 
 /// <summary>
-/// Reads the guidance payload out of a Gemini reply and converts its boxes into screenshot
-/// pixels, so nothing above <see cref="IVisionProvider"/> sees a vendor coordinate convention.
+/// Reads the guidance payload out of a model reply and converts its boxes into screenshot
+/// pixels, so nothing above <see cref="IVisionProvider"/> sees a coordinate convention.
 /// </summary>
+/// <remarks>
+/// Shared by every provider, because the format it parses is the one
+/// <see cref="VisionPromptBuilder"/> asks for rather than anything a vendor defines. Naming it
+/// after one vendor implied otherwise.
+/// </remarks>
 /// <remarks>
 /// Gemini reports boxes as <c>box_2d: [ymin, xmin, ymax, xmax]</c> normalised to 0-1000.
 /// Measured 2026-10-12 against synthetic screens with known rectangles: that convention gave
@@ -14,7 +19,7 @@ namespace CursorAI.App.Vision;
 /// with centres 29 to 54 pixels out. The ordering is y-first, which is easy to get backwards
 /// and produces targets transposed across the diagonal when it happens.
 /// </remarks>
-internal static class GeminiTargetParser
+internal static class VisionTargetParser
 {
     private const double NormalizedScale = 1000.0;
 
@@ -22,7 +27,7 @@ internal static class GeminiTargetParser
     /// Returns the parsed payload, or null when the reply is ordinary prose. A reply that was
     /// never asked for targets is the normal case, not a failure.
     /// </summary>
-    internal static GeminiTargetPayload? TryParse(string responseText, int imageWidth, int imageHeight)
+    internal static VisionTargetPayload? TryParse(string responseText, int imageWidth, int imageHeight)
     {
         if (string.IsNullOrWhiteSpace(responseText) || imageWidth <= 0 || imageHeight <= 0)
         {
@@ -63,7 +68,7 @@ internal static class GeminiTargetParser
                 }
             }
 
-            return new GeminiTargetPayload(
+            return new VisionTargetPayload(
                 string.IsNullOrWhiteSpace(answer) ? responseText.Trim() : answer,
                 parsed);
         }
@@ -124,4 +129,4 @@ internal static class GeminiTargetParser
 }
 
 /// <summary>The answer text and located elements from one guidance reply.</summary>
-internal sealed record GeminiTargetPayload(string Answer, IReadOnlyList<VisionTarget> Targets);
+internal sealed record VisionTargetPayload(string Answer, IReadOnlyList<VisionTarget> Targets);

@@ -6,10 +6,19 @@ namespace CursorAI.App.Vision;
 #pragma warning disable OPENAI001 // The official SDK currently marks its Responses API surface as experimental.
 public sealed class OpenAIVisionProvider : IVisionProvider
 {
-    public string Description => $"OpenAI ({Model}) via the Responses API";
+    /// <summary>
+    /// Verified current on 2026-10-14 and documented as accepting text and image input. Note
+    /// that many older OpenAI model identifiers stop working on 2026-10-23, so an inherited
+    /// configuration may need revisiting.
+    /// </summary>
+    internal const string ModelEnvironmentVariable = "OPENAI_MODEL";
+
+    private readonly object _clientGate = new();
+
+    public string Description => $"OpenAI ({ResolveModel()}) via the Responses API";
 
     private const string ApiKeyEnvironmentVariable = "OPENAI_API_KEY";
-    private const string Model = "gpt-5.4-mini";
+    private const string DefaultModel = "gpt-5.4-mini";
 
     private ResponsesClient? _client;
 
@@ -34,7 +43,7 @@ public sealed class OpenAIVisionProvider : IVisionProvider
 
         CreateResponseOptions options = new()
         {
-            Model = Model
+            Model = ResolveModel()
         };
         options.InputItems.Add(ResponseItem.CreateUserMessageItem(
         [
@@ -49,15 +58,33 @@ public sealed class OpenAIVisionProvider : IVisionProvider
             throw new InvalidOperationException("OpenAI returned no usable response text.");
         }
 
-        return new VisionResult(responseText, Model);
+        // The guidance format is defined by VisionPromptBuilder rather than by a vendor, so the
+        // same parser serves every provider.
+        VisionTargetPayload? payload = VisionTargetParser.TryParse(
+            responseText, request.ImagePixelWidth, request.ImagePixelHeight);
+
+        return new VisionResult(
+            payload?.Answer ?? responseText,
+            ResolveModel(),
+            Targets: payload?.Targets);
+    }
+
+    internal static string ResolveModel()
+    {
+        string? configured = AppConfiguration.Resolve(ModelEnvironmentVariable, static _ => null);
+        return string.IsNullOrWhiteSpace(configured) ? DefaultModel : configured.Trim();
     }
 
     private ResponsesClient GetClient()
     {
-        if (_client is not null)
+        // Locked: a hotkey press and a tray click can both land here, and the previous lazy
+        // initialisation would have built two clients.
+        lock (_clientGate)
         {
-            return _client;
-        }
+            if (_client is not null)
+            {
+                return _client;
+            }
 
         string? apiKey = AppConfiguration.Resolve(
             ApiKeyEnvironmentVariable,
@@ -70,8 +97,9 @@ public sealed class OpenAIVisionProvider : IVisionProvider
                 + $"{ApiKeyEnvironmentVariable} before starting.");
         }
 
-        _client = new ResponsesClient(apiKey);
-        return _client;
+            _client = new ResponsesClient(apiKey);
+            return _client;
+        }
     }
 }
 #pragma warning restore OPENAI001
