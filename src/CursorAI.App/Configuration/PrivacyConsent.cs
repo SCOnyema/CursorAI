@@ -21,7 +21,8 @@ public static class PrivacyConsent
     /// Current disclosure version. Increment when what leaves the machine changes, which
     /// invalidates previously stored agreement and asks again.
     /// </summary>
-    public const int CurrentVersion = 1;
+    /// <remarks>2 added conversation history to what is sent.</remarks>
+    public const int CurrentVersion = 2;
 
     public static bool IsAccepted(UserSettings settings)
     {
@@ -46,6 +47,9 @@ public static class PrivacyConsent
         + "  - the name and window title of the application in front"
         + Environment.NewLine
         + "  - your question, as text"
+        + Environment.NewLine
+        + "  - your last few questions and CursorAI's answers from the past ten minutes, "
+        + "so follow-up questions make sense (kept in memory only, never saved to disk)"
         + Environment.NewLine + Environment.NewLine
         + "That screenshot may contain anything visible at the time, including messages, "
         + "documents, credentials and other people's information."

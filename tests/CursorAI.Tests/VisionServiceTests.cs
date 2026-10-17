@@ -120,6 +120,58 @@ public class VisionServiceTests
         Assert.NotNull(result.Latency);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_SendsEarlierAnswersWithAFollowUp()
+    {
+        RecordingVisionProvider provider = new(new VisionResult("Open File, then Export."));
+        VisionService service = new(provider);
+
+        VisionResult first = await service.AnalyzeAsync("How do I export?", SmallFrame());
+        Assert.Empty(provider.Request!.History);
+        Assert.Equal(0, first.FollowUpTurns);
+
+        VisionResult second = await service.AnalyzeAsync("And then?", SmallFrame());
+
+        ConversationTurn turn = Assert.Single(provider.Request!.History);
+        Assert.Equal("How do I export?", turn.Question);
+        Assert.Equal("Open File, then Export.", turn.Answer);
+        Assert.Equal(1, second.FollowUpTurns);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotRememberAFailedQuestion()
+    {
+        // A failed question has no answer for a follow-up to refer to.
+        VisionService service = new(new FailingVisionProvider());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.AnalyzeAsync("Will this fail?", SmallFrame()));
+
+        Assert.Empty(service.Conversation.Recent(DateTimeOffset.Now));
+    }
+
+    private static CapturedFrame SmallFrame() => CreateFrame(
+        DateTimeOffset.UnixEpoch,
+        new CapturedMonitorInfo(
+            new PhysicalScreenBounds(0, 0, 2, 2),
+            new PhysicalScreenBounds(0, 0, 2, 2),
+            true),
+        new PhysicalScreenPoint(0, 0),
+        new PhysicalScreenPoint(0, 0),
+        new ForegroundWindowInfo(1, "t", "p"));
+
+    private sealed class FailingVisionProvider : IVisionProvider
+    {
+        public string Description => "failing test double";
+
+        public void Dispose()
+        {
+        }
+
+        public Task<VisionResult> AnalyzeAsync(VisionRequest request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("provider failed");
+    }
+
     private sealed class RecordingVisionProvider(VisionResult result) : IVisionProvider
     {
         public string Description => "recording test double";

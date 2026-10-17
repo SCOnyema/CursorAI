@@ -13,12 +13,16 @@ namespace CursorAI.App.Vision;
 /// Wall-clock duration of the call, measured by <see cref="VisionService"/> rather than by a
 /// provider so it is comparable across providers.
 /// </param>
+/// <param name="FollowUpTurns">
+/// Earlier exchanges sent with this question as conversation history; zero for a fresh one.
+/// </param>
 public sealed record VisionResult(
     string ResponseText,
     string? Model = null,
     VisionUsage? Usage = null,
     TimeSpan? Latency = null,
-    IReadOnlyList<VisionTarget>? Targets = null);
+    IReadOnlyList<VisionTarget>? Targets = null,
+    int FollowUpTurns = 0);
 
 /// <summary>
 /// One on-screen element the model located, for visual guidance to point at.

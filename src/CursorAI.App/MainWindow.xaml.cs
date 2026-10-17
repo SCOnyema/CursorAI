@@ -22,7 +22,13 @@ public partial class MainWindow : Window
 {
     private const double CursorOffsetX = 16;
     private const double CursorOffsetY = 16;
-    private const string DevelopmentVisionQuestion = "What am I looking at, and what is under my cursor?";
+    /// <summary>
+    /// The question the Explain shortcut asks. It replaced a development placeholder, "What am I
+    /// looking at, and what is under my cursor?", which made every answer open with exactly
+    /// that: a description of the screen and the cursor's position.
+    /// </summary>
+    private const string ExplainScreenQuestion =
+        "Explain what I'm looking at and what I can do here, starting with the part I'm pointing at.";
     private static readonly TimeSpan TrackingInterval = TimeSpan.FromMilliseconds(16);
 
     /// <summary>
@@ -241,7 +247,7 @@ public partial class MainWindow : Window
 
             Console.WriteLine("Vision analysis started.");
             VisionResult result = await _visionService.AnalyzeAsync(
-                DevelopmentVisionQuestion,
+                ExplainScreenQuestion,
                 frame,
                 requestTargets: true,
                 cancellationSource.Token);
@@ -383,6 +389,12 @@ public partial class MainWindow : Window
             }
         }
 
+        if (result.FollowUpTurns > 0)
+        {
+            // Visible so a follow-up is never sent with history the user did not expect.
+            parts.Add($"follow-up to {result.FollowUpTurns} earlier");
+        }
+
         return parts.Count == 0
             ? "No provider metadata reported."
             : string.Join("  ", parts);
@@ -409,6 +421,7 @@ public partial class MainWindow : Window
                     Describe: () => HotkeyService_VisionHotkeyPressed(this, EventArgs.Empty),
                     Capture: () => HotkeyService_CaptureHotkeyPressed(this, EventArgs.Empty),
                     Cancel: CancelActiveRequest,
+                    NewConversation: StartNewConversation,
                     ShowShortcuts: ShowShortcuts,
                     OpenSettings: ShowSettings,
                     Quit: () => HotkeyService_QuitHotkeyPressed(this, EventArgs.Empty)));
@@ -445,13 +458,16 @@ public partial class MainWindow : Window
             + Environment.NewLine
             + $"{keys.Type.DisplayName}  -  type a question"
             + Environment.NewLine
-            + $"{keys.Vision.DisplayName}  -  describe this screen"
+            + $"{keys.Vision.DisplayName}  -  explain this screen"
             + Environment.NewLine
             + $"{keys.Capture.DisplayName}  -  save a screenshot, nothing sent"
             + Environment.NewLine
             + $"{keys.Settings.DisplayName}  -  settings"
             + Environment.NewLine
             + $"{keys.Quit.DisplayName}  -  quit"
+            + Environment.NewLine + Environment.NewLine
+            + "Follow-up questions remember the last few answers. Start a new conversation from "
+            + "the tray menu, or wait ten minutes."
             + unavailable;
 
         string engines = $"{app.ProviderDisplayName} - "
@@ -459,6 +475,24 @@ public partial class MainWindow : Window
             + $"{_speechServices.Synthesizer?.Description ?? "no speech output"}";
 
         _responsePanel.ShowAnswer(body, engines);
+    }
+
+    /// <summary>
+    /// Forgets the conversation so the next question starts fresh. Without it the only reset is
+    /// the idle timeout, which is no help when changing subject straight away.
+    /// </summary>
+    private void StartNewConversation()
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _visionService.Conversation.Clear();
+        Console.WriteLine("Conversation cleared.");
+        _responsePanel.ShowAnswer(
+            "Started a new conversation. The next question will not refer to earlier ones.",
+            "Nothing from the earlier conversation will be sent.");
     }
 
     private void HotkeyService_SettingsHotkeyPressed(object? sender, EventArgs e)

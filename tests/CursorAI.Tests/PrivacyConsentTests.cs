@@ -34,6 +34,8 @@ public class PrivacyConsentTests : IDisposable
         Assert.Contains("cursor position", text);
         Assert.Contains("window title", text);
         Assert.Contains("your question", text);
+        Assert.Contains("last few questions", text);
+        Assert.Contains("never saved to disk", text);
     }
 
     [Fact]

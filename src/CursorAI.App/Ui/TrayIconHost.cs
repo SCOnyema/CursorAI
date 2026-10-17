@@ -35,10 +35,11 @@ internal sealed class TrayIconHost : IDisposable
         _menu = new ContextMenuStrip();
         Add(actions.Ask, "Ask by voice", hotkeys.Activation.DisplayName);
         Add(actions.Type, "Type a question", hotkeys.Type.DisplayName);
-        Add(actions.Describe, "Describe this screen", hotkeys.Vision.DisplayName);
+        Add(actions.Describe, "Explain this screen", hotkeys.Vision.DisplayName);
         Add(actions.Capture, "Save a screenshot (local only)", hotkeys.Capture.DisplayName);
         _menu.Items.Add(new ToolStripSeparator());
         Add(actions.Cancel, "Cancel the current request", null);
+        Add(actions.NewConversation, "New conversation", null);
         _menu.Items.Add(new ToolStripSeparator());
         Add(actions.ShowShortcuts, "Shortcuts and status", null);
         Add(actions.OpenSettings, "Settings", hotkeys.Settings.DisplayName);
@@ -136,6 +137,7 @@ internal sealed record TrayActions(
     Action? Describe = null,
     Action? Capture = null,
     Action? Cancel = null,
+    Action? NewConversation = null,
     Action? ShowShortcuts = null,
     Action? OpenSettings = null,
     Action? Quit = null);

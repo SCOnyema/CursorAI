@@ -14,7 +14,8 @@ public sealed class VisionRequest
         PhysicalScreenPoint cursorScreenPosition,
         PhysicalScreenPoint cursorPositionInImage,
         ForegroundWindowInfo foregroundWindow,
-        bool requestsTargets = false)
+        bool requestsTargets = false,
+        IReadOnlyList<ConversationTurn>? history = null)
     {
         UserPrompt = userPrompt;
         EncodedImage = encodedImage;
@@ -26,6 +27,7 @@ public sealed class VisionRequest
         CursorPositionInImage = cursorPositionInImage;
         ForegroundWindow = foregroundWindow;
         RequestsTargets = requestsTargets;
+        History = history ?? [];
     }
 
     public string UserPrompt { get; }
@@ -53,4 +55,7 @@ public sealed class VisionRequest
     /// Measured 2026-10-12: asking for coordinates roughly triples latency, so it is opt-in.
     /// </summary>
     public bool RequestsTargets { get; }
+
+    /// <summary>Earlier exchanges in this conversation, oldest first; empty for a fresh one.</summary>
+    public IReadOnlyList<ConversationTurn> History { get; }
 }

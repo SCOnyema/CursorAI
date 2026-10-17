@@ -15,6 +15,12 @@ public sealed class VisionService
     }
 
     /// <summary>
+    /// The conversation every request path shares, so a typed follow-up can refer to a spoken
+    /// question and the reverse.
+    /// </summary>
+    public ConversationMemory Conversation { get; } = new();
+
+    /// <summary>
     /// Analyses one captured frame.
     /// </summary>
     /// <param name="requestTargets">
@@ -34,6 +40,7 @@ public sealed class VisionService
         cancellationToken.ThrowIfCancellationRequested();
 
         byte[] pngData = EncodePng(frame);
+        IReadOnlyList<ConversationTurn> history = Conversation.Recent(DateTimeOffset.Now);
         VisionRequest request = new(
             userPrompt,
             pngData,
@@ -44,13 +51,22 @@ public sealed class VisionService
             frame.CursorScreenPosition,
             frame.CursorPositionInImage,
             frame.ForegroundWindow,
-            requestTargets);
+            requestTargets,
+            history);
 
         // Latency is measured here, not in a provider, so it means the same thing for all of
         // them: everything the user waits through after the frame is captured.
         long startedAt = Stopwatch.GetTimestamp();
         VisionResult result = await _provider.AnalyzeAsync(request, cancellationToken);
-        return result with { Latency = Stopwatch.GetElapsedTime(startedAt) };
+
+        // Recorded only once an answer exists: a failed or cancelled question has no answer
+        // for a follow-up to refer to.
+        Conversation.Record(userPrompt, result.ResponseText, DateTimeOffset.Now);
+        return result with
+        {
+            Latency = Stopwatch.GetElapsedTime(startedAt),
+            FollowUpTurns = history.Count
+        };
     }
 
     private static byte[] EncodePng(CapturedFrame frame)
