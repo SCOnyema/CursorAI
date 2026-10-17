@@ -49,6 +49,26 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <!--
+    Whisper's native DLLs in the published build. Whisper.net only searches runtimes\win-x64
+    beside the application, and a single-file build extracts bundled DLLs to a hashed %TEMP%
+    folder it never looks in, so every published voice turn failed after recording. They are
+    embedded instead and written to %LOCALAPPDATA% by WhisperNativeLibrary on first use. Only
+    win-x64, because the publish profile is win-x64; the package's own copies for every
+    architecture are dropped from the bundle, where nothing could load them.
+  -->
+  <ItemGroup Condition="'$(PublishProfileActive)' == 'true'">
+    <EmbeddedResource Include="$(PkgWhisper_net_Runtime)\build\win-x64\*.dll"
+                      LogicalName="WhisperNative.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="DropBundledWhisperNatives" BeforeTargets="AssignTargetPaths"
+          Condition="'$(PublishProfileActive)' == 'true'">
+    <ItemGroup>
+      <None Remove="$(PkgWhisper_net_Runtime)\build\**\*" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- Embedded so a single-file published build can load it with no file beside the exe. -->
     <EmbeddedResource Include="cursorai.ico" />
@@ -70,7 +90,7 @@
     <PackageReference Include="OpenAI" Version="2.14.0" />
     <PackageReference Include="System.Speech" Version="10.0.0" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" GeneratePathProperty="true" />
   </ItemGroup>
 
 </Project>

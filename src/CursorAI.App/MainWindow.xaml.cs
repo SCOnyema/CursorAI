@@ -755,13 +755,19 @@ public partial class MainWindow : Window
 
     private void ReportFailure(string what, Exception exception, TimeSpan elapsed)
     {
+        // The exception's own message is kept: a bare type name gave a tester
+        // "FileNotFoundException" with advice about networks and quotas, when the missing file
+        // was a local DLL and the message said so.
         string detail = exception is InvalidOperationException
             ? exception.Message
-            : $"{exception.GetType().Name}. Check the microphone, network connectivity, API "
-              + "access, and rate limits or quota.";
+            : $"{exception.GetType().Name}: {exception.Message}";
 
         Console.Error.WriteLine($"{what} after {elapsed.TotalSeconds:F1} seconds.");
         Console.Error.WriteLine(detail);
+
+        // The full exception goes to the log file too, so a tester's log is enough to diagnose
+        // a failure without reproducing it.
+        Console.Error.WriteLine(exception.ToString());
         Debug.WriteLine($"{what}: {exception}");
 
         if (!_isShuttingDown)

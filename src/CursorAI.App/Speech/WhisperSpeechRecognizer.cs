@@ -30,12 +30,15 @@ internal sealed class WhisperSpeechRecognizer : ISpeechRecognizer
     private bool _isDisposed;
 
     /// <summary>
-    /// Verifies the model is loadable up front, so an unusable model fails at startup where it
-    /// can fall back to the legacy recognizer, rather than on the first hotkey press.
+    /// Verifies the model and the native library up front, so either being unusable fails at
+    /// startup where it can fall back to the legacy recognizer, rather than on the first hotkey
+    /// press. The native check matters most: a published build that could not find it used to
+    /// record the user's question and then fail.
     /// </summary>
     internal WhisperSpeechRecognizer(string modelPath)
         : this(modelPath, new MicrophoneRecorder(), ownsRecorder: true)
     {
+        WhisperNativeLibrary.EnsureLoaded();
     }
 
     internal WhisperSpeechRecognizer(string modelPath, IAudioRecorder recorder, bool ownsRecorder)

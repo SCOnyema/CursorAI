@@ -169,6 +169,8 @@ Sizes verified by HTTP HEAD on 2026-10-14: `tiny.en` 74 MB, `base.en` 141 MB, `s
 
 Transcription of a 5.7-second utterance, measured on the development machine: `base.en` 2.9s warm, `small.en` 8.4s warm. Both transcribed the synthesized test phrase perfectly, so that measurement says nothing about their relative accuracy on real speech with background noise and an accent — which is where the larger model is expected to earn its size. `small.en` is the default for that reason; set `CURSORAI_WHISPER_MODEL=base.en` to trade accuracy for roughly three times the speed. The spoken reply has markdown stripped first, since a synthesiser otherwise reads `**Export PDF**` as “star star Export PDF star star”, and is shortened to roughly 600 characters at a sentence boundary.
 
+The Whisper engine's own native DLLs (about 1.9 MB, MIT) are embedded in the published executable and written to `%LOCALAPPDATA%\CursorAI\runtimes` on first start. Whisper.net only looks for them beside the application, which a single-file build cannot satisfy, so before this every published voice turn recorded the question and then failed with `FileNotFoundException`. They are checked at startup, so if they still cannot load, CursorAI says so and falls back to the Windows recognizer instead of failing mid-question.
+
 Voice depends on machine state CursorAI does not control: an installed speech recognition language, a microphone, an output device. Any of those missing is reported at startup and disables only voice; vision by hotkey keeps working.
 
 ## API keys
