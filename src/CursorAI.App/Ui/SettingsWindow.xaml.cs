@@ -39,6 +39,7 @@ public partial class SettingsWindow : Window
         GeminiKeyPlain.Text = settings.GeminiApiKey ?? string.Empty;
         OpenAiKeyBox.Password = settings.OpenAiApiKey ?? string.Empty;
         ModelBox.Text = settings.GeminiModel ?? string.Empty;
+        OpenAiModelBox.Text = settings.OpenAiModel ?? string.Empty;
 
         string provider = settings.Provider ?? VisionProviderFactory.DefaultProviderName;
         ProviderBox.SelectedIndex =
@@ -58,7 +59,8 @@ public partial class SettingsWindow : Window
             ("GEMINI_API_KEY", "Gemini key"),
             ("OPENAI_API_KEY", "OpenAI key"),
             ("CURSORAI_VISION_PROVIDER", "Provider"),
-            ("GEMINI_MODEL", "Model"),
+            ("GEMINI_MODEL", "Gemini model"),
+            ("OPENAI_MODEL", "OpenAI model"),
         ];
 
         string[] overridden =
@@ -99,11 +101,13 @@ public partial class SettingsWindow : Window
         string geminiKey = ShowKeyBox.IsChecked == true ? GeminiKeyPlain.Text : GeminiKeyBox.Password;
         string provider = (ProviderBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "gemini";
 
-        UserSettings settings = new(
-            Blank(geminiKey),
-            Blank(OpenAiKeyBox.Password),
+        UserSettings settings = ApplyEdits(
+            AppConfiguration.Settings,
+            geminiKey,
+            OpenAiKeyBox.Password,
             provider,
-            Blank(ModelBox.Text));
+            ModelBox.Text,
+            OpenAiModelBox.Text);
 
         try
         {
@@ -132,6 +136,28 @@ public partial class SettingsWindow : Window
         StatusText.Text = message;
         StatusText.Visibility = Visibility.Visible;
     }
+
+    /// <summary>
+    /// Applies what the form edits on top of the current settings. Built from the current
+    /// settings rather than from scratch, so fields this window does not show survive a save:
+    /// building a fresh record silently dropped the privacy agreement, and the disclosure then
+    /// reappeared on the very next question.
+    /// </summary>
+    internal static UserSettings ApplyEdits(
+        UserSettings current,
+        string? geminiKey,
+        string? openAiKey,
+        string provider,
+        string? geminiModel,
+        string? openAiModel) =>
+        current with
+        {
+            GeminiApiKey = Blank(geminiKey),
+            OpenAiApiKey = Blank(openAiKey),
+            Provider = provider,
+            GeminiModel = Blank(geminiModel),
+            OpenAiModel = Blank(openAiModel)
+        };
 
     private static string? Blank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

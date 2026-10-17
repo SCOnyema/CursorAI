@@ -12,7 +12,7 @@ V0.1 Cursor Companion and V0.2 Controls & State are complete. V0.3.3 now include
 - `OpenAIVisionProvider`, using `gpt-5.4-mini` through the Responses API
 - `OpenAICompatibleVisionProvider`, reaching any endpoint that speaks the OpenAI chat-completions API
 
-There is no provider-selection UI and no automatic fallback. The active provider is chosen at startup from `CURSORAI_VISION_PROVIDER`, or in the settings window:
+There is no automatic fallback. The active provider is chosen at startup from `CURSORAI_VISION_PROVIDER`, or in the settings window (**Ctrl + Alt + K**), which offers `gemini` and `openai` along with their keys and models. A provider change applies the next time CursorAI starts; a changed key or model applies to the next request. `compatible` is configured through environment variables only:
 
 | Value | Reaches | Credential |
 |---|---|---|
@@ -25,6 +25,8 @@ $env:CURSORAI_VISION_PROVIDER = "openai"
 $env:OPENAI_API_KEY           = "<key>"
 $env:OPENAI_MODEL             = "gpt-5.4-mini"   # optional; this is the default
 ```
+
+Like Gemini, OpenAI requests are sent with storage turned off (`store=false`), so the response is not kept for later retrieval. The request timeout is 120 seconds on every provider.
 
 ### Other providers through the compatible endpoint
 
@@ -53,7 +55,7 @@ CursorAI publishes as a single self-contained executable, so no .NET runtime ins
 dotnet publish .\src\CursorAI.App\CursorAI.App.csproj -c Release -p:PublishProfileActive=true -o .\dist
 ```
 
-That produces one file of roughly 65 MB at `.\dist\CursorAI.App.exe`. Copy it anywhere and run it. The build is unsigned, so Windows SmartScreen will warn on first launch.
+That produces one file of roughly 78 MB at `.\dist\CursorAI.App.exe`. Copy it anywhere and run it. The build is unsigned, so Windows SmartScreen will warn on first launch.
 
 On first run CursorAI shows what leaves your machine and asks you to agree before anything is sent. Declining is supported: local-only screenshots keep working and nothing is transmitted. It then opens settings if no key is configured, and shows a card listing every shortcut.
 
@@ -185,12 +187,6 @@ The Gemini free tier allows **20 requests per day, per model**. Each **Ctrl + Al
 
 Because the quota is per model, `GEMINI_MODEL` is also the way to keep testing after exhausting one. Measured on 2026-10-08: a full-resolution 1920x1080 call to `gemini-3.5-flash` completed in 4.4 seconds; `gemini-3.8-flash` under heavy load exceeded 30 seconds, which is why the request timeout is 60 seconds.
 
-`OPENAI_API_KEY` is needed only if application composition is changed to select `OpenAIVisionProvider`:
-
-```powershell
-$env:OPENAI_API_KEY = "<your-api-key>"
-```
-
 These assignments affect only the current PowerShell process/session and child processes started from it.
 
 ## Privacy boundary
@@ -199,6 +195,6 @@ The buddy window is excluded from screen capture via `SetWindowDisplayAffinity(W
 
 Agreement is recorded per disclosure version, so a future change to what is sent asks again rather than inheriting the old answer. The response panel names the provider while a request is in flight, so the moment your screen leaves the machine is visible rather than implied.
 
-Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press, a typed question, or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider—currently Google’s Gemini Interactions API. A spoken turn additionally sends the recognised *text* of your question. **No audio ever leaves the machine, in either direction.** Recordings are held in memory, transcribed locally by Whisper, and discarded; they are never written to disk. Spoken replies are synthesised locally by Piper, or by the Windows voice, from text that is already on this machine. No cloud speech service is used for recognition or for synthesis. CursorAI explicitly sends `store=false`, so the request is stateless and is not retained as an Interaction object for later retrieval or continuation. This setting does not make broader claims about Google’s processing or data-use practices.
+Screenshots and foreground window titles can contain sensitive or private information. No automatic capture, background monitoring, periodic screenshots, or screen recording occurs. The local **Ctrl + Alt + S** shortcut never uploads data. Only an explicit **Ctrl + Alt + D** press, a typed question, or a spoken turn started with **Ctrl + Alt + A** sends the current monitor screenshot and selected context to the active provider: Google’s Gemini Interactions API by default, or OpenAI’s Responses API or a configured compatible endpoint when one of those is selected. A spoken turn additionally sends the recognised *text* of your question. **No audio ever leaves the machine, in either direction.** Recordings are held in memory, transcribed locally by Whisper, and discarded; they are never written to disk. Spoken replies are synthesised locally by Piper, or by the Windows voice, from text that is already on this machine. No cloud speech service is used for recognition or for synthesis. CursorAI explicitly sends `store=false` to Gemini and to OpenAI, so the request is not retained for later retrieval or continuation. That is what CursorAI asks for, not a claim about either provider’s broader processing or data-use practices. Compatible endpoints vary in what they accept, so nothing is promised there.
 
 Developers using Gemini’s free tier should avoid testing with sensitive or private screens and review Google’s current Gemini API data-use terms before submitting real sensitive information.

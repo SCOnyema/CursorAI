@@ -32,6 +32,16 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void SaveThenLoad_RoundTripsConsentAndOpenAiModel()
+    {
+        UserSettings saved = new("key", null, "openai", null, ConsentVersion: 1, OpenAiModel: "gpt-5.4-mini");
+
+        Store.Save(saved);
+
+        Assert.Equal(saved, Store.Load());
+    }
+
+    [Fact]
     public void Save_DoesNotWriteCredentialsAsPlaintext()
     {
         // The whole point of the DPAPI layer: a key must not be readable in the file.

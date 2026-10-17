@@ -74,7 +74,8 @@ public sealed class SettingsStore
                     Unprotect(stored.OpenAiApiKey),
                     stored.Provider,
                     stored.GeminiModel,
-                    stored.ConsentVersion);
+                    stored.ConsentVersion,
+                    stored.OpenAiModel);
         }
         catch (Exception exception) when (exception is IOException
             or UnauthorizedAccessException
@@ -97,7 +98,8 @@ public sealed class SettingsStore
             Protect(settings.OpenAiApiKey),
             Blank(settings.Provider),
             Blank(settings.GeminiModel),
-            settings.ConsentVersion);
+            settings.ConsentVersion,
+            Blank(settings.OpenAiModel));
 
         // Written through a temporary file so an interrupted save cannot leave a half-written
         // settings file that then fails to parse.
@@ -151,5 +153,6 @@ public sealed class SettingsStore
         string? OpenAiApiKey,
         string? Provider,
         string? GeminiModel,
-        int? ConsentVersion = null);
+        int? ConsentVersion = null,
+        string? OpenAiModel = null);
 }
